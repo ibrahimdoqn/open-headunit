@@ -28,7 +28,7 @@ Kartta görünen adımlar:
 - **Telefonun WiFi'si bekleniyor**: ünite WiFi'de değil, tarama yapılıyor
 - **Telefonun erişim noktası görünmüyor**: öğrenilen ağ 20 sn boyunca taramada yok (konum açık olmalı)
 - **Başka bir WiFi ağına bağlı**: ünite telefonun ağı yerine başka bir ağa bağlandı
-- **WiFi bağlandı, telefona bağlanılıyor**: 1–3 sn aralıklarla hızlı deneme
+- **WiFi bağlandı, telefona bağlanılıyor**: bağlanır bağlanmaz (0,5 sn) dener; olmazsa 1 dakika boyunca 5 sn'de bir, sonra normal 10 sn'lik döngü
 - **Telefonda Headunit Server kapalı**: telefon cevap veriyor ama 5277 reddediliyor; bir kez nasıl açılacağı da söylenir
 - **Bağlanıyor → Android Auto**
 

@@ -33,8 +33,8 @@ Automatic connection (Headunit Server, Auto; on by default):
   not in range, another network, "WiFi connected, connecting to the
   phone", or the phone's head unit server being off (port 5277 refused
   rather than unanswered);
-- quick retries (1-3 s) after a join or a dropped session instead of
-  the loop's 10 s, still one sweep at a time;
+- the first sweep the moment WiFi is joined (0.5 s), then every 5 s
+  for a minute instead of the loop's 10 s, still one sweep at a time;
 - the phone's network and address learned from the last session; a
   refusing gateway that is the known phone skips the subnet sweep;
 - the home screen's "last session" auto-connect no longer dials the

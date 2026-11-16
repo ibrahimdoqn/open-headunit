@@ -16,8 +16,11 @@ object WifiJoinWaitPolicy {
     const val MAX_TIMEOUT_SEC = 120
     const val DEFAULT_TIMEOUT_SEC = 30
 
-    /** After the join, before the probe: the hotspot's DHCP lease and routes take a moment. */
-    const val SETTLE_DELAY_MS = 1_500L
+    /**
+     * After the join, before the probe. Android reports a WiFi network available once it has its
+     * address, so this only lets the routes land: the search starts as good as immediately.
+     */
+    const val SETTLE_DELAY_MS = 500L
 
     /**
      * From Android 9 a foreground app gets four scans in any two minutes, and the platform refuses

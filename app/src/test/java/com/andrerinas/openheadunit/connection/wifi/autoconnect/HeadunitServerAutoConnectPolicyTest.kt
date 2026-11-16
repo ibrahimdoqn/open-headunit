@@ -45,11 +45,11 @@ class HeadunitServerAutoConnectPolicyTest {
     }
 
     @Test
-    fun `quick retries are short, few, and then hand back to the loop`() {
-        val gaps = (0 until P.fastRescanCount).map { P.fastRescanDelayMs(it)!! }
-        assertTrue(gaps.all { it in 1L..3_000L })
-        assertTrue("the quick retries take ${gaps.sum()} ms", gaps.sum() <= 10_000L)
+    fun `after a join the retries come every 5 s for a minute, then the loop's own pace`() {
+        (0 until P.fastRescanCount).forEach { assertEquals(5_000L, P.fastRescanDelayMs(it)) }
+        assertEquals(60_000L, (0 until P.fastRescanCount).sumOf { P.fastRescanDelayMs(it)!! })
         assertNull(P.fastRescanDelayMs(P.fastRescanCount))
+        assertNull(P.fastRescanDelayMs(-1))
     }
 
     @Test
@@ -87,10 +87,11 @@ class HeadunitServerAutoConnectPolicyTest {
 
     @Test
     fun `the subnet sweep is skipped only when the refusing gateway is the known phone`() {
-        assertTrue(P.skipsSubnetSweep("192.168.43.1", "192.168.43.1"))
-        assertFalse(P.skipsSubnetSweep("192.168.1.1", "192.168.43.1"))
-        assertFalse("nothing learned yet", P.skipsSubnetSweep("192.168.43.1", ""))
-        assertFalse(P.skipsSubnetSweep(null, "192.168.43.1"))
+        assertTrue(P.skipsSubnetSweep(true, "192.168.43.1", "192.168.43.1"))
+        assertFalse(P.skipsSubnetSweep(true, "192.168.1.1", "192.168.43.1"))
+        assertFalse("nothing learned yet", P.skipsSubnetSweep(true, "192.168.43.1", ""))
+        assertFalse(P.skipsSubnetSweep(true, null, "192.168.43.1"))
+        assertFalse("Wireless Helper sweeps too, and never skips", P.skipsSubnetSweep(false, "192.168.43.1", "192.168.43.1"))
     }
 
     @Test

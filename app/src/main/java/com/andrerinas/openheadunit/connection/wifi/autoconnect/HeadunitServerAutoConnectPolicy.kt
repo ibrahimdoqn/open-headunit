@@ -20,12 +20,13 @@ object HeadunitServerAutoConnectPolicy {
     const val VISIBILITY_CHECK_INTERVAL_MS = 10_000L
 
     /**
-     * Gaps before the sweeps that follow a WiFi join or a dropped session, instead of the loop's
-     * usual 10 s. Android Auto's head unit server can take a moment to answer once the phone's
-     * hotspot has a client, and a 10 s wait there is most of the delay a driver sees. Short and
-     * few: each sweep still runs one at a time, so the server is never probed twice at once.
+     * After a WiFi join or a dropped session the first sweep runs at once; if it does not connect,
+     * the next ones come every 5 s instead of the loop's usual 10 s, for a minute, and then the
+     * loop's own pace (with its back-off for a phone that never answers) takes over. Each sweep
+     * still runs one at a time, so the head unit server is never probed twice at once.
      */
-    private val FAST_RESCAN_DELAYS_MS = longArrayOf(1_000L, 1_000L, 2_000L, 2_000L, 3_000L)
+    const val FAST_RESCAN_INTERVAL_MS = 5_000L
+    const val FAST_RESCAN_COUNT = 12
 
     fun clampStartDelaySec(seconds: Int): Int = seconds.coerceIn(MIN_START_DELAY_SEC, MAX_START_DELAY_SEC)
 
@@ -56,9 +57,10 @@ object HeadunitServerAutoConnectPolicy {
     ): Boolean = isHeadunitServerAuto && autoConnect && !cancelledByUser && !userExited && !sessionLive
 
     /** The gap before quick retry [index] (from zero), or null once the quick retries are spent. */
-    fun fastRescanDelayMs(index: Int): Long? = FAST_RESCAN_DELAYS_MS.getOrNull(index)
+    fun fastRescanDelayMs(index: Int): Long? =
+        if (index in 0 until FAST_RESCAN_COUNT) FAST_RESCAN_INTERVAL_MS else null
 
-    val fastRescanCount: Int get() = FAST_RESCAN_DELAYS_MS.size
+    val fastRescanCount: Int get() = FAST_RESCAN_COUNT
 
     /**
      * An SSID as WifiInfo or a scan result gives it, without the quotes, or null when Android
@@ -110,8 +112,8 @@ object HeadunitServerAutoConnectPolicy {
      * is the phone itself, which is learned from the last session: on a shared network the
      * gateway is a router, and refusing says nothing about where the phone is.
      */
-    fun skipsSubnetSweep(refusedGatewayIp: String?, knownPhoneIp: String?): Boolean =
-        !refusedGatewayIp.isNullOrBlank() && refusedGatewayIp == knownPhoneIp
+    fun skipsSubnetSweep(isHeadunitServerAuto: Boolean, refusedGatewayIp: String?, knownPhoneIp: String?): Boolean =
+        isHeadunitServerAuto && !refusedGatewayIp.isNullOrBlank() && refusedGatewayIp == knownPhoneIp
 
     /** One timeline step: a label and the seconds it took, or null for a step that was skipped. */
     data class Step(val label: String, val ms: Long?)

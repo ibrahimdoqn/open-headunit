@@ -251,11 +251,16 @@ class HeadunitServerAutoConnect(
     }
 
     /**
-     * Asked by the discovery loop for the gap before its next sweep: a quick one while the retries
+     * Asked by the discovery loop for the gap before its next sweep: 5 s while the quick retries
      * last, else null for the loop's own. When they run out the card goes back to searching.
      */
     fun nextFastRescanDelayMs(): Long? {
         if (fastRescanIndex < 0) return null
+        // Wireless Helper's sweeps share this loop; a mode changed mid-retries keeps its own pace.
+        if (!isAuto) {
+            fastRescanIndex = -1
+            return null
+        }
         val delayMs = HeadunitServerAutoConnectPolicy.fastRescanDelayMs(fastRescanIndex)
         if (delayMs == null) {
             fastRescanIndex = -1
@@ -272,7 +277,8 @@ class HeadunitServerAutoConnect(
      * of the subnet, which only holds when the gateway is the phone learned from the last session.
      */
     fun onGatewayRefused(ip: String): Boolean {
-        val skip = HeadunitServerAutoConnectPolicy.skipsSubnetSweep(ip, settings.headunitServerPhoneIp)
+        // Wireless Helper's hotspot strategies sweep with the same discovery; only Auto may skip.
+        val skip = HeadunitServerAutoConnectPolicy.skipsSubnetSweep(isAuto, ip, settings.headunitServerPhoneIp)
         scope.launch {
             if (!isAuto || sessionLive) return@launch
             ConnectionStageTracker.showDiagnostic(ConnectionStage.SERVER_CLOSED)
