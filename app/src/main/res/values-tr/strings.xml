@@ -1852,4 +1852,9 @@
     <string name="usb_wireless_dongle_help">AAWireless veya Carlinkit gibi bir kablosuz USB adaptörü ile bağlanıyorsanız bunu açın. Open Headunit bir dongle’ı kablodan ayırt edemez, bu yüzden bu seçenek ana ekran etiketlerini kablodan kablosuza çevirir.</string>
     <string name="home_subtitle_usb_dongle">Kablosuz</string>
     <string name="home_action_connect_wireless_dongle">Kablosuz bağlan</string>
+    <!-- [PATCH wifi-wait] -->
+    <string name="wifi_wait_searching">WiFi henüz bağlı değil. Ağlar aranıyor…</string>
+    <string name="wifi_wait_turn_on">WiFi kapalı. Açın; bağlanınca Android Auto başlar.</string>
+    <string name="wifi_wait_timeout">Bir WiFi ağına bağlanılamadı. Telefonun erişim noktası açık mı?</string>
+    <string name="wifi_wait_cancelled">WiFi beklemesi durduruldu</string>
 </resources>
