@@ -1860,4 +1860,13 @@
     <string name="usb_wireless_dongle_help">Увімкніть, якщо підключаєтеся через бездротовий USB-адаптер, як-от AAWireless або Carlinkit. Open Headunit не може відрізнити адаптер від кабелю, тому цей параметр змінює підписи на головному екрані з кабелю на бездротове з’єднання.</string>
     <string name="home_subtitle_usb_dongle">Бездротово</string>
     <string name="home_action_connect_wireless_dongle">Підключити бездротово</string>
+    <string name="join_wifi_before_server_search">Підключатися до Wi-Fi перед пошуком</string>
+    <string name="join_wifi_before_server_search_summary">Якщо пристрій ще не в Wi-Fi, кнопка Wi-Fi чекає на підключення.</string>
+    <string name="join_wifi_before_server_search_help">Кнопка Wi-Fi шукає Headunit Server у мережі Wi-Fi цього пристрою. Якщо пристрій ще не підключився до точки доступу телефона, шукати ніде, і спроба одразу закінчувалася. Коли це ввімкнено, кнопка просить Android пошукати мережі Wi-Fi, чекає на підключення пристрою, а потім шукає. Мережу обирає Android: спершу збережіть точку доступу телефона в налаштуваннях Wi-Fi цього пристрою. Якщо Wi-Fi вимкнено, застосунок попросить його ввімкнути.</string>
+    <string name="join_wifi_timeout">Тайм-аут підключення до Wi-Fi</string>
+    <string name="join_wifi_timeout_help">Скільки кнопка Wi-Fi чекає, поки цей пристрій підключиться до Wi-Fi, від 10 до 120 секунд. Коли час мине, застосунок однаково виконає один пошук.</string>
+    <string name="join_wifi_waiting">Спершу підключення до Wi-Fi…</string>
+    <string name="join_wifi_still_waiting">Досі чекаємо на Wi-Fi…</string>
+    <string name="join_wifi_timed_out">Не вдалося підключитися до Wi-Fi. Чи ввімкнено точку доступу телефона?</string>
+    <string name="join_wifi_turn_on">Wi-Fi вимкнено. Увімкніть його; пошук почнеться після підключення.</string>
 </resources>

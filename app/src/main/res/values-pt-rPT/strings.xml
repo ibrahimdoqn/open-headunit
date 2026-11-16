@@ -1909,4 +1909,13 @@
     <string name="usb_wireless_dongle_help">Ative esta opção se utiliza um adaptador USB sem fios como AAWireless ou Carlinkit. O Open Headunit não distingue um dongle de um cabo, pelo que esta opção altera os textos do ecrã inicial de cabo para sem fios.</string>
     <string name="home_subtitle_usb_dongle">Sem fios</string>
     <string name="home_action_connect_wireless_dongle">Ligar sem fios</string>
+    <string name="join_wifi_before_server_search">Ligar ao Wi-Fi antes de procurar</string>
+    <string name="join_wifi_before_server_search_summary">Se a unidade ainda não estiver no Wi-Fi, o botão Wi-Fi espera pela ligação.</string>
+    <string name="join_wifi_before_server_search_help">O botão Wi-Fi procura o Headunit Server na rede Wi-Fi desta unidade. Uma unidade que ainda não se ligou à zona Wi-Fi do telemóvel não tem onde procurar, por isso a tentativa terminava logo. Com isto ativo, o botão pede ao Android para procurar redes Wi-Fi, espera que a unidade se ligue e depois procura. O Android escolhe a rede: guarde primeiro a zona Wi-Fi do telemóvel nas definições Wi-Fi desta unidade. Se o Wi-Fi estiver desligado, a app pede-lhe para o ligar.</string>
+    <string name="join_wifi_timeout">Tempo limite de ligação Wi-Fi</string>
+    <string name="join_wifi_timeout_help">Quanto tempo o botão Wi-Fi espera que esta unidade se ligue ao Wi-Fi, de 10 a 120 segundos. Quando o tempo acaba, a app procura uma vez na mesma.</string>
+    <string name="join_wifi_waiting">A ligar primeiro ao Wi-Fi…</string>
+    <string name="join_wifi_still_waiting">Ainda à espera do Wi-Fi…</string>
+    <string name="join_wifi_timed_out">Nenhuma rede Wi-Fi ligada. A zona Wi-Fi do telemóvel está ativa?</string>
+    <string name="join_wifi_turn_on">O Wi-Fi está desligado. Ligue-o; a procura começa quando se ligar.</string>
 </resources>

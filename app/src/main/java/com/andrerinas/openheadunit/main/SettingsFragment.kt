@@ -101,6 +101,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeStrategy
+import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
 import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
 import com.andrerinas.openheadunit.connection.wifi.WirelessRearmPolicy
 import java.io.File
@@ -227,6 +228,8 @@ class SettingsFragment : Fragment() {
     private var pendingAutoEnableHotspot by pending::autoEnableHotspot
     private var pendingWaitForWifi by pending::waitForWifi
     private var pendingWaitForWifiTimeout by pending::waitForWifiTimeout
+    private var pendingJoinWifiBeforeServerSearch by pending::joinWifiBeforeServerSearch
+    private var pendingJoinWifiTimeout by pending::joinWifiTimeout
     private var pendingBluetoothManagerServiceName by pending::bluetoothManagerServiceName
     private var pendingNativeAaIgnoreExternalBt by pending::nativeAaIgnoreExternalBt
     private var pendingExternalBtZbtTransport by pending::externalBtZbtTransport
@@ -719,6 +722,8 @@ class SettingsFragment : Fragment() {
         pendingHelperConnectionStrategy?.let { if (it != settings.helperConnectionStrategy) settings.helperConnectionStrategy = it }
         pendingWaitForWifi?.let { if (it != settings.waitForWifiBeforeWifiDirect) settings.waitForWifiBeforeWifiDirect = it }
         pendingWaitForWifiTimeout?.let { if (it != settings.waitForWifiTimeout) settings.waitForWifiTimeout = it }
+        pendingJoinWifiBeforeServerSearch?.let { if (it != settings.joinWifiBeforeServerSearch) settings.joinWifiBeforeServerSearch = it }
+        pendingJoinWifiTimeout?.let { if (it != settings.joinWifiTimeout) settings.joinWifiTimeout = it }
         pendingBluetoothManagerServiceName?.let { if (it != settings.bluetoothManagerServiceName) settings.bluetoothManagerServiceName = it }
         pendingNativeAaIgnoreExternalBt?.let { if (it != settings.nativeAaIgnoreExternalBt) settings.nativeAaIgnoreExternalBt = it }
         pendingExternalBtZbtTransport?.let { if (it != settings.externalBtZbtTransport) settings.externalBtZbtTransport = it }
@@ -1307,6 +1312,7 @@ class SettingsFragment : Fragment() {
             // Mode 1 (Auto Server) can also use the auto-hotspot feature
             if (pendingWifiConnectionMode == WifiLauncherMode.AUTO) {
                 addHotspotToggle(items)
+                addJoinWifiBeforeServerSearch(items)
             }
         }
 
@@ -4794,6 +4800,40 @@ class SettingsFragment : Fragment() {
                 updateSettingsList()
                 // No credentials preflight here, unlike the transport button above: the band
                 // changes what we ask the radio for, not what this unit can tell a phone.
+            }
+        ))
+    }
+
+    /** Only Auto reads it: the WiFi button's one sweep is the only search that waits. */
+    private fun addJoinWifiBeforeServerSearch(items: MutableList<SettingItem>) {
+        val enabled = pendingJoinWifiBeforeServerSearch ?: settings.joinWifiBeforeServerSearch
+        items.add(SettingItem.ToggleSettingEntry(
+            stableId = "joinWifiBeforeServerSearch",
+            nameResId = R.string.join_wifi_before_server_search,
+            descriptionResId = R.string.join_wifi_before_server_search_summary,
+            helpResId = R.string.join_wifi_before_server_search_help,
+            isChecked = enabled,
+            onCheckedChanged = { isChecked ->
+                pendingJoinWifiBeforeServerSearch = isChecked
+                checkChanges()
+                updateSettingsList()
+            }
+        ))
+        if (!enabled) return
+        val timeout = pendingJoinWifiTimeout ?: settings.joinWifiTimeout
+        items.add(SettingItem.SliderSettingEntry(
+            stableId = "joinWifiTimeout",
+            nameResId = R.string.join_wifi_timeout,
+            helpResId = R.string.join_wifi_timeout_help,
+            value = "${timeout}s",
+            sliderValue = timeout.toFloat(),
+            valueFrom = WifiJoinWaitPolicy.MIN_TIMEOUT_SEC.toFloat(),
+            valueTo = WifiJoinWaitPolicy.MAX_TIMEOUT_SEC.toFloat(),
+            stepSize = 5f,
+            onValueChanged = { value ->
+                pendingJoinWifiTimeout = value.toInt()
+                checkChanges()
+                updateSettingsList()
             }
         ))
     }

@@ -1860,4 +1860,13 @@
     <string name="esp32_relay_end_aa_on_disconnect_summary">Sitzung beenden, wenn das Relay zweimal nicht antwortet</string>
     <string name="esp32_relay_end_aa_on_disconnect_description">Dieses Gerät sendet alle 2 Sekunden eine Statusprüfung an das Relay. Bleiben zwei Prüfungen in Folge ohne Antwort, endet die Android-Auto-Sitzung.</string>
     <string name="esp32_relay_phase_failed">Fehlgeschlagen: %1$s</string>
+    <string name="join_wifi_before_server_search">Vor der Suche mit WLAN verbinden</string>
+    <string name="join_wifi_before_server_search_summary">Ist das Gerät noch nicht im WLAN, wartet die WLAN-Taste auf die Verbindung.</string>
+    <string name="join_wifi_before_server_search_help">Die WLAN-Taste sucht den Headunit-Server im WLAN dieses Geräts. Ist das Gerät noch nicht mit dem Hotspot des Handys verbunden, gibt es nichts zu durchsuchen, und der Versuch endete sofort. Ist dies an, lässt die Taste Android nach WLANs suchen, wartet auf die Verbindung und sucht dann. Android wählt das Netz selbst: Speichere den Hotspot des Handys vorher in den WLAN-Einstellungen dieses Geräts. Ist WLAN aus, bittet die App dich, es einzuschalten.</string>
+    <string name="join_wifi_timeout">WLAN-Verbindungszeit</string>
+    <string name="join_wifi_timeout_help">Wie lange die WLAN-Taste wartet, bis sich dieses Gerät mit dem WLAN verbindet, 10 bis 120 Sekunden. Danach sucht die App trotzdem einmal.</string>
+    <string name="join_wifi_waiting">Zuerst mit WLAN verbinden…</string>
+    <string name="join_wifi_still_waiting">Warte noch auf WLAN…</string>
+    <string name="join_wifi_timed_out">Kein WLAN verbunden. Ist der Hotspot des Handys an?</string>
+    <string name="join_wifi_turn_on">WLAN ist aus. Schalte es ein; die Suche startet nach der Verbindung.</string>
 </resources>

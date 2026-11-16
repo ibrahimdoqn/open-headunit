@@ -1857,4 +1857,13 @@
     <string name="usb_wireless_dongle_help">Zapněte, pokud se připojujete přes bezdrátový USB adaptér, například AAWireless nebo Carlinkit. Open Headunit nerozezná adaptér od kabelu, proto tato volba změní popisky na domovské obrazovce na bezdrátové.</string>
     <string name="home_subtitle_usb_dongle">Bezdrátově</string>
     <string name="home_action_connect_wireless_dongle">Připojit bezdrátově</string>
+    <string name="join_wifi_before_server_search">Před hledáním se připojit k Wi-Fi</string>
+    <string name="join_wifi_before_server_search_summary">Když jednotka ještě není na Wi-Fi, tlačítko Wi-Fi počká na připojení.</string>
+    <string name="join_wifi_before_server_search_help">Tlačítko Wi-Fi hledá server Headunit v síti Wi-Fi této jednotky. Jednotka, která se ještě nepřipojila k hotspotu telefonu, nemá kde hledat, a pokus proto hned skončil. Když je toto zapnuté, tlačítko požádá Android o vyhledání sítí Wi-Fi, počká na připojení jednotky a pak hledá. Síť vybírá Android: nejdřív si hotspot telefonu uložte v nastavení Wi-Fi této jednotky. Je-li Wi-Fi vypnuté, aplikace vás požádá o jeho zapnutí.</string>
+    <string name="join_wifi_timeout">Časový limit připojení k Wi-Fi</string>
+    <string name="join_wifi_timeout_help">Jak dlouho tlačítko Wi-Fi čeká na připojení této jednotky k Wi-Fi, od 10 do 120 sekund. Po vypršení aplikace stejně jednou hledá.</string>
+    <string name="join_wifi_waiting">Nejdřív se připojuji k Wi-Fi…</string>
+    <string name="join_wifi_still_waiting">Stále čekám na Wi-Fi…</string>
+    <string name="join_wifi_timed_out">Nepřipojeno k žádné síti Wi-Fi. Je hotspot telefonu zapnutý?</string>
+    <string name="join_wifi_turn_on">Wi-Fi je vypnuté. Zapněte ho; hledání začne po připojení.</string>
 </resources>

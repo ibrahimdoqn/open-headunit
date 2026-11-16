@@ -1904,4 +1904,13 @@
     <string name="usb_wireless_dongle_help">Aktifkan ini jika Anda terhubung melalui adaptor USB nirkabel seperti AAWireless atau Carlinkit. Open Headunit tidak dapat membedakan dongle dari kabel, jadi opsi ini mengubah label layar utama dari kabel menjadi nirkabel.</string>
     <string name="home_subtitle_usb_dongle">Secara nirkabel</string>
     <string name="home_action_connect_wireless_dongle">Hubungkan secara nirkabel</string>
+    <string name="join_wifi_before_server_search">Sambungkan WiFi sebelum mencari</string>
+    <string name="join_wifi_before_server_search_summary">Jika unit belum terhubung WiFi, tombol WiFi menunggu sampai terhubung.</string>
+    <string name="join_wifi_before_server_search_help">Tombol WiFi mencari Server Headunit di jaringan WiFi unit ini. Unit yang belum tersambung ke hotspot ponsel tidak punya jaringan untuk dicari, jadi percobaan langsung berakhir. Jika ini aktif, tombol meminta Android memindai WiFi, menunggu sampai unit tersambung, lalu mencari. Android yang memilih jaringannya: simpan dulu hotspot ponsel di pengaturan WiFi unit ini. Jika WiFi mati, aplikasi meminta Anda menyalakannya.</string>
+    <string name="join_wifi_timeout">Batas waktu sambungan WiFi</string>
+    <string name="join_wifi_timeout_help">Berapa lama tombol WiFi menunggu unit ini tersambung ke WiFi, 10 sampai 120 detik. Setelah waktu habis, aplikasi tetap mencari sekali.</string>
+    <string name="join_wifi_waiting">Menyambungkan WiFi dulu…</string>
+    <string name="join_wifi_still_waiting">Masih menunggu WiFi…</string>
+    <string name="join_wifi_timed_out">Tidak tersambung ke jaringan WiFi. Apakah hotspot ponsel menyala?</string>
+    <string name="join_wifi_turn_on">WiFi mati. Nyalakan; pencarian dimulai setelah tersambung.</string>
 </resources>

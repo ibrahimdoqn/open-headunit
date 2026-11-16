@@ -1933,9 +1933,13 @@
     <string name="audio_matching_phase_gradient_hint">Slow playback</string>
     <string name="audio_matching_option" translatable="false">%1$s\n(%2$s)</string>
     <string name="audio_matching_description">OHU remains the default. WSOLA aligns overlapping waveforms; Phase Vocoder adjusts spectral phases. Short uses a shorter analysis window. Phase Gradient integrates phase gradients to reconstruct phases. These independent methods add processing latency; their names do not rank sound quality.\n\nNative methods: PCM music. Navigation, voice responses, system sounds and AAC use OHU.\nReconnect to apply. Removed engine preferences reset to OHU.</string>
-    <!-- [PATCH wifi-wait] -->
-    <string name="wifi_wait_searching">WiFi not connected yet. Searching for networks…</string>
-    <string name="wifi_wait_turn_on">WiFi is off. Turn it on; Android Auto starts once connected.</string>
-    <string name="wifi_wait_timeout">No WiFi network joined. Is the phone hotspot on?</string>
-    <string name="wifi_wait_cancelled">Stopped waiting for WiFi</string>
+    <string name="join_wifi_before_server_search">Join WiFi before searching</string>
+    <string name="join_wifi_before_server_search_summary">If this unit is not on WiFi yet, the WiFi button waits for it to join.</string>
+    <string name="join_wifi_before_server_search_help">The WiFi button looks for the Headunit Server on this unit\'s WiFi network. A unit that has not joined the phone\'s hotspot yet has nothing to search, so the attempt used to end at once. With this on, the button asks Android to scan for WiFi, waits until this unit joins, then searches. Android picks the network: save the phone\'s hotspot in this unit\'s WiFi settings first. If WiFi is off, the app asks you to turn it on.</string>
+    <string name="join_wifi_timeout">WiFi join timeout</string>
+    <string name="join_wifi_timeout_help">How long the WiFi button waits for this unit to join WiFi, from 10 to 120 seconds. When the time runs out, the app searches once anyway.</string>
+    <string name="join_wifi_waiting">Joining WiFi first…</string>
+    <string name="join_wifi_still_waiting">Still waiting for WiFi…</string>
+    <string name="join_wifi_timed_out">No WiFi network joined. Is the phone\'s hotspot on?</string>
+    <string name="join_wifi_turn_on">WiFi is off. Turn it on; the search starts once it connects.</string>
 </resources>

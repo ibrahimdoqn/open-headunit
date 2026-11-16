@@ -1862,4 +1862,13 @@
     <string name="usb_wireless_dongle_help">Włącz tę opcję, jeśli łączysz się przez bezprzewodowy adapter USB, np. AAWireless lub Carlinkit. Open Headunit nie odróżnia adaptera od kabla, więc ta opcja zmienia etykiety na ekranie głównym z kablowych na bezprzewodowe.</string>
     <string name="home_subtitle_usb_dongle">Bezprzewodowo</string>
     <string name="home_action_connect_wireless_dongle">Połącz bezprzewodowo</string>
+    <string name="join_wifi_before_server_search">Połącz z WiFi przed wyszukiwaniem</string>
+    <string name="join_wifi_before_server_search_summary">Jeśli jednostka nie ma jeszcze WiFi, przycisk WiFi czeka na połączenie.</string>
+    <string name="join_wifi_before_server_search_help">Przycisk WiFi szuka Headunit Server w sieci WiFi tej jednostki. Jednostka, która nie połączyła się jeszcze z hotspotem telefonu, nie ma czego przeszukać, więc próba od razu się kończyła. Gdy to jest włączone, przycisk prosi Androida o skanowanie WiFi, czeka na połączenie jednostki, a potem szuka. Sieć wybiera Android: najpierw zapisz hotspot telefonu w ustawieniach WiFi tej jednostki. Gdy WiFi jest wyłączone, aplikacja poprosi o jego włączenie.</string>
+    <string name="join_wifi_timeout">Limit czasu połączenia WiFi</string>
+    <string name="join_wifi_timeout_help">Jak długo przycisk WiFi czeka, aż ta jednostka połączy się z WiFi, od 10 do 120 sekund. Po upływie czasu aplikacja i tak szuka raz.</string>
+    <string name="join_wifi_waiting">Najpierw łączenie z WiFi…</string>
+    <string name="join_wifi_still_waiting">Nadal czekam na WiFi…</string>
+    <string name="join_wifi_timed_out">Nie połączono z żadną siecią WiFi. Czy hotspot telefonu jest włączony?</string>
+    <string name="join_wifi_turn_on">WiFi jest wyłączone. Włącz je; wyszukiwanie ruszy po połączeniu.</string>
 </resources>

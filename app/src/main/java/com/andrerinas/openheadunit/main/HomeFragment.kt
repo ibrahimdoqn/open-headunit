@@ -78,6 +78,7 @@ import com.andrerinas.openheadunit.connection.usb.UsbPermissionAskPolicy
 import com.andrerinas.openheadunit.connection.usb.UsbPermissionAsks
 import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
 import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
+import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
 import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaiter
 import com.andrerinas.openheadunit.connection.wifi.WirelessSelectionPolicy
 import kotlinx.coroutines.withContext
@@ -1916,45 +1917,6 @@ class HomeFragment : Fragment() {
         }
     }
 
-    // [PATCH wifi-wait] Headunit Server needs the unit on the phone's hotspot first. Units that
-    // are slow to auto-join (common on Android 10) used to run the one-shot sweep before the join
-    // and find nothing. Wait for WiFi (scanning to speed up auto-join), then start the sweep.
-    private fun startHeadunitServerScanWhenWifiUp() {
-        val ctx = requireContext().applicationContext
-        if (WifiJoinWaiter.isWaiting) {
-            WifiJoinWaiter.cancel()
-            ToastUtils.showToast(ctx, getString(R.string.wifi_wait_cancelled), Toast.LENGTH_SHORT)
-            return
-        }
-        if (!WifiJoinWaiter.isWifiConnected(ctx)) {
-            ToastUtils.showToast(ctx, getString(R.string.wifi_wait_searching), Toast.LENGTH_LONG)
-        }
-        WifiJoinWaiter.waitForWifi(
-            ctx,
-            timeoutMs = WIFI_JOIN_TIMEOUT_MS,
-            onReady = onReady@{
-                if (commManager.isConnected || AapService.scanningState.value) return@onReady
-                ToastUtils.showToast(ctx, getString(R.string.searching_headunit_server), Toast.LENGTH_SHORT)
-                if (isAdded) {
-                    (activity as? MainActivity)?.beginAutoConnect(
-                        "manual WiFi headunit server scan",
-                        MainActivity.ConnectionUiMode.OVERLAY
-                    )
-                }
-                val intent = Intent(ctx, AapService::class.java).apply {
-                    action = AapService.ACTION_START_WIRELESS_SCAN
-                }
-                ContextCompat.startForegroundService(ctx, intent)
-            },
-            onTimeout = {
-                ToastUtils.showToast(ctx, getString(R.string.wifi_wait_timeout), Toast.LENGTH_LONG)
-            },
-            onWifiOff = {
-                ToastUtils.showToast(ctx, getString(R.string.wifi_wait_turn_on), Toast.LENGTH_LONG)
-            }
-        )
-    }
-
     private fun onWifiClicked() {
         if (showsBringUp(HomePrimaryPolicy.Connection.WIFI)) return
         // With a session up the wireless tile is the way back to it, the same as the USB one. It
@@ -1971,7 +1933,25 @@ class HomeFragment : Fragment() {
                 } else if (AapService.scanningState.value) {
                     ToastUtils.showToast(requireContext(), getString(R.string.already_scanning), Toast.LENGTH_SHORT)
                 } else {
-                    startHeadunitServerScanWhenWifiUp()
+                    // Not on WiFi yet: AapService joins it first, and the card shows that step. The
+                    // overlay would cover the card and, with a 30 s bound, could end mid-wait.
+                    val joinsWifiFirst = WifiJoinWaitPolicy.shouldWait(
+                        App.provide(requireContext()).settings.joinWifiBeforeServerSearch,
+                        WifiJoinWaiter.isWifiConnected(requireContext())
+                    )
+                    // AapService says it when it waits, so a second press does not stack two toasts.
+                    if (!joinsWifiFirst) {
+                        ToastUtils.showToast(requireContext(), getString(R.string.searching_headunit_server), Toast.LENGTH_SHORT)
+                    }
+                    (requireActivity() as? MainActivity)?.beginAutoConnect(
+                        "manual WiFi headunit server scan",
+                        if (joinsWifiFirst) MainActivity.ConnectionUiMode.PILL_THEN_OVERLAY
+                        else MainActivity.ConnectionUiMode.OVERLAY
+                    )
+                    val intent = Intent(requireContext(), AapService::class.java).apply {
+                        action = AapService.ACTION_START_WIRELESS_SCAN
+                    }
+                    ContextCompat.startForegroundService(requireContext(), intent)
                 }
             }
             WifiLauncherMode.HELPER -> { // Helper (Wireless Launcher)
@@ -3100,8 +3080,6 @@ class HomeFragment : Fragment() {
         private const val STATE_PENDING_WIDGET_ID = "home_pending_widget_id"
         private const val STATE_PENDING_WIDGET_PAGE = "home_pending_widget_page"
         private const val UNAVAILABLE_FAVORITE_ALPHA = 0.45f
-        /** [PATCH wifi-wait] How long the WiFi button waits for the unit to join a network. */
-        private const val WIFI_JOIN_TIMEOUT_MS = 60_000L
         private var hasAutoStarted = false
         private var hasCheckedNativeDriverSelection = false
         var forceSelfModeLaunch = false

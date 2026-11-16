@@ -1859,4 +1859,13 @@
     <string name="usb_wireless_dongle_help">Bật tùy chọn này nếu bạn kết nối qua bộ chuyển đổi USB không dây như AAWireless hoặc Carlinkit. Open Headunit không thể phân biệt dongle với cáp, nên tùy chọn này đổi nhãn màn hình chính từ cáp sang không dây.</string>
     <string name="home_subtitle_usb_dongle">Không dây</string>
     <string name="home_action_connect_wireless_dongle">Kết nối không dây</string>
+    <string name="join_wifi_before_server_search">Kết nối WiFi trước khi tìm</string>
+    <string name="join_wifi_before_server_search_summary">Nếu máy chưa vào WiFi, nút WiFi sẽ chờ đến khi kết nối.</string>
+    <string name="join_wifi_before_server_search_help">Nút WiFi tìm Headunit Server trên mạng WiFi của máy này. Máy chưa vào điểm phát của điện thoại thì không có mạng để tìm, nên lần thử kết thúc ngay. Khi bật mục này, nút sẽ nhờ Android quét WiFi, chờ máy kết nối rồi mới tìm. Android tự chọn mạng: hãy lưu điểm phát của điện thoại trong cài đặt WiFi của máy này trước. Nếu WiFi đang tắt, ứng dụng sẽ nhắc bạn bật lên.</string>
+    <string name="join_wifi_timeout">Thời gian chờ kết nối WiFi</string>
+    <string name="join_wifi_timeout_help">Thời gian nút WiFi chờ máy này kết nối WiFi, từ 10 đến 120 giây. Hết thời gian, ứng dụng vẫn tìm một lần.</string>
+    <string name="join_wifi_waiting">Đang kết nối WiFi trước…</string>
+    <string name="join_wifi_still_waiting">Vẫn đang chờ WiFi…</string>
+    <string name="join_wifi_timed_out">Chưa kết nối được mạng WiFi nào. Điểm phát của điện thoại đã bật chưa?</string>
+    <string name="join_wifi_turn_on">WiFi đang tắt. Hãy bật lên; việc tìm sẽ bắt đầu khi kết nối.</string>
 </resources>

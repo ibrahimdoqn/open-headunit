@@ -1861,4 +1861,13 @@
     <string name="usb_wireless_dongle_help">Schakel dit in als je verbindt via een draadloze USB-adapter zoals AAWireless of Carlinkit. Open Headunit kan een dongle niet van een kabel onderscheiden, dus deze optie verandert de startschermteksten van kabel naar draadloos.</string>
     <string name="home_subtitle_usb_dongle">Draadloos</string>
     <string name="home_action_connect_wireless_dongle">Draadloos verbinden</string>
+    <string name="join_wifi_before_server_search">Eerst met wifi verbinden</string>
+    <string name="join_wifi_before_server_search_summary">Is deze unit nog niet op wifi, dan wacht de wifiknop op de verbinding.</string>
+    <string name="join_wifi_before_server_search_help">De wifiknop zoekt de headunitserver op het wifinetwerk van deze unit. Een unit die nog niet met de hotspot van de telefoon verbonden is, heeft niets om te doorzoeken, dus de poging stopte meteen. Met deze optie laat de knop Android naar wifi zoeken, wacht tot deze unit verbonden is en zoekt dan. Android kiest het netwerk zelf: sla de hotspot van de telefoon eerst op in de wifi-instellingen van deze unit. Staat wifi uit, dan vraagt de app je het aan te zetten.</string>
+    <string name="join_wifi_timeout">Wachttijd wifiverbinding</string>
+    <string name="join_wifi_timeout_help">Hoe lang de wifiknop wacht tot deze unit met wifi verbonden is, van 10 tot 120 seconden. Daarna zoekt de app toch één keer.</string>
+    <string name="join_wifi_waiting">Eerst verbinden met wifi…</string>
+    <string name="join_wifi_still_waiting">Nog steeds wachten op wifi…</string>
+    <string name="join_wifi_timed_out">Geen wifinetwerk verbonden. Staat de hotspot van de telefoon aan?</string>
+    <string name="join_wifi_turn_on">Wifi staat uit. Zet het aan; het zoeken begint zodra er verbinding is.</string>
 </resources>

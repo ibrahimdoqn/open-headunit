@@ -63,6 +63,8 @@ class SettingsPendingCopy {
     var autoEnableHotspot: Boolean? = null
     var waitForWifi: Boolean? = null
     var waitForWifiTimeout: Int? = null
+    var joinWifiBeforeServerSearch: Boolean? = null
+    var joinWifiTimeout: Int? = null
     var bluetoothManagerServiceName: String? = null
     var nativeAaIgnoreExternalBt: Boolean? = null
     var externalBtZbtTransport: Boolean? = null
@@ -158,6 +160,8 @@ class SettingsPendingCopy {
         autoEnableHotspot = settings.autoEnableHotspot
         waitForWifi = settings.waitForWifiBeforeWifiDirect
         waitForWifiTimeout = settings.waitForWifiTimeout
+        joinWifiBeforeServerSearch = settings.joinWifiBeforeServerSearch
+        joinWifiTimeout = settings.joinWifiTimeout
         bluetoothManagerServiceName = settings.bluetoothManagerServiceName
         nativeAaIgnoreExternalBt = settings.nativeAaIgnoreExternalBt
         externalBtZbtTransport = settings.externalBtZbtTransport
@@ -254,6 +258,8 @@ class SettingsPendingCopy {
         autoEnableHotspot != settings.autoEnableHotspot ||
         waitForWifi != settings.waitForWifiBeforeWifiDirect ||
         waitForWifiTimeout != settings.waitForWifiTimeout ||
+        joinWifiBeforeServerSearch != settings.joinWifiBeforeServerSearch ||
+        joinWifiTimeout != settings.joinWifiTimeout ||
         bluetoothManagerServiceName != settings.bluetoothManagerServiceName ||
         nativeAaIgnoreExternalBt != settings.nativeAaIgnoreExternalBt ||
         externalBtZbtTransport != settings.externalBtZbtTransport ||

@@ -1871,4 +1871,13 @@
     <string name="usb_wireless_dongle_help">Actívalo si te conectas mediante un adaptador USB inalámbrico como AAWireless o Carlinkit. Open Headunit no puede distinguir un adaptador de un cable, por lo que esta opción cambia las etiquetas de la pantalla de inicio a inalámbrico.</string>
     <string name="home_subtitle_usb_dongle">De forma inalámbrica</string>
     <string name="home_action_connect_wireless_dongle">Conectar de forma inalámbrica</string>
+    <string name="join_wifi_before_server_search">Conectar al Wi-Fi antes de buscar</string>
+    <string name="join_wifi_before_server_search_summary">Si la unidad aún no tiene Wi-Fi, el botón Wi-Fi espera a que se conecte.</string>
+    <string name="join_wifi_before_server_search_help">El botón Wi-Fi busca el Headunit Server en la red Wi-Fi de esta unidad. Una unidad que aún no se ha unido a la zona Wi-Fi del teléfono no tiene dónde buscar, así que el intento terminaba enseguida. Con esto activado, el botón pide a Android que busque redes Wi-Fi, espera a que la unidad se conecte y luego busca. Android elige la red: guarda antes la zona Wi-Fi del teléfono en los ajustes Wi-Fi de esta unidad. Si el Wi-Fi está apagado, la app te pide que lo actives.</string>
+    <string name="join_wifi_timeout">Tiempo de conexión Wi-Fi</string>
+    <string name="join_wifi_timeout_help">Cuánto espera el botón Wi-Fi a que esta unidad se conecte al Wi-Fi, de 10 a 120 segundos. Al acabarse el tiempo, la app busca una vez de todos modos.</string>
+    <string name="join_wifi_waiting">Conectando primero al Wi-Fi…</string>
+    <string name="join_wifi_still_waiting">Aún esperando el Wi-Fi…</string>
+    <string name="join_wifi_timed_out">No se conectó a ninguna red Wi-Fi. ¿Está activa la zona Wi-Fi del teléfono?</string>
+    <string name="join_wifi_turn_on">El Wi-Fi está apagado. Actívalo; la búsqueda empieza al conectarse.</string>
 </resources>

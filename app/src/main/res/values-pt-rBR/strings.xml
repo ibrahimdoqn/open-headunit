@@ -1857,4 +1857,13 @@
     <string name="usb_wireless_dongle_help">Ative se você se conecta por um adaptador USB sem fio como AAWireless ou Carlinkit. O Open Headunit não consegue diferenciar um dongle de um cabo, então esta opção muda os rótulos da tela inicial de cabo para sem fio.</string>
     <string name="home_subtitle_usb_dongle">Sem fio</string>
     <string name="home_action_connect_wireless_dongle">Conectar sem fio</string>
+    <string name="join_wifi_before_server_search">Conectar ao WiFi antes de buscar</string>
+    <string name="join_wifi_before_server_search_summary">Se a unidade ainda não estiver no WiFi, o botão WiFi espera a conexão.</string>
+    <string name="join_wifi_before_server_search_help">O botão WiFi procura o Headunit Server na rede WiFi desta unidade. Uma unidade que ainda não entrou no hotspot do celular não tem onde procurar, então a tentativa terminava na hora. Com isto ligado, o botão pede ao Android para procurar redes WiFi, espera a unidade se conectar e depois busca. O Android escolhe a rede: salve antes o hotspot do celular nas configurações de WiFi desta unidade. Se o WiFi estiver desligado, o app pede para você ligá-lo.</string>
+    <string name="join_wifi_timeout">Tempo limite de conexão WiFi</string>
+    <string name="join_wifi_timeout_help">Quanto tempo o botão WiFi espera esta unidade se conectar ao WiFi, de 10 a 120 segundos. Quando o tempo acaba, o app busca uma vez mesmo assim.</string>
+    <string name="join_wifi_waiting">Conectando ao WiFi primeiro…</string>
+    <string name="join_wifi_still_waiting">Ainda aguardando o WiFi…</string>
+    <string name="join_wifi_timed_out">Nenhuma rede WiFi conectada. O hotspot do celular está ligado?</string>
+    <string name="join_wifi_turn_on">O WiFi está desligado. Ligue-o; a busca começa quando conectar.</string>
 </resources>

@@ -63,6 +63,7 @@ Choose from the five options below depending on your Android Auto version and se
   2. Scroll down and tap **Version** 10 times to unlock Developer settings.
   3. Tap the three-dot menu in the top right corner and choose **Start headunit server**.
   4. In Open Headunit, tap the **WiFi** button to connect (or use Self-Mode).
+- If the head unit has not joined the phone's hotspot yet, the **WiFi** button asks Android to scan, waits for the join (30 s by default) and then searches. Save the phone's hotspot in the head unit's WiFi settings first. Turn this off or change the wait under Settings -> **Wireless Connection** -> **Join WiFi before searching**.
 
 #### 4. Wireless Helper
 - Our companion app triggers the wireless connection automatically in the background.

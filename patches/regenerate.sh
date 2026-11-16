@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-# Rewrites the .patch files from the commits that sit on top of upstream.
+# Rewrites patches/*.patch as ONE patch: everything this branch changes against upstream,
+# outside patches/, with patches/commit-message.txt as its message.
 # Usage (from the repository root):  ./patches/regenerate.sh [upstream-ref]
 # upstream-ref defaults to upstream/main (add it once with:
 #   git remote add upstream https://github.com/andreknieriem/open-headunit.git)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 BASE="${1:-upstream/main}"
-TMP="$(mktemp -d)"
-# Commits that only touch patches/ are left out of the patch set.
-git format-patch "$BASE"..HEAD --no-signature -o "$TMP" -- . ':(exclude)patches' >/dev/null
+BASE_SHA="$(git merge-base "$BASE" HEAD)"
+MSG="patches/commit-message.txt"
+[ -f "$MSG" ] || { echo "missing $MSG"; exit 1; }
+WT="$(mktemp -d)"
+OUT="$(mktemp -d)"
+trap 'git worktree remove --force "$WT" >/dev/null 2>&1 || true; rm -rf "$OUT"' EXIT
+git worktree add -q --detach "$WT" "$BASE_SHA"
+git diff --binary "$BASE_SHA" HEAD -- . ':(exclude)patches' | git -C "$WT" apply --index
+git -C "$WT" commit -q -F "$PWD/$MSG"
+git -C "$WT" format-patch -1 HEAD --no-signature -o "$OUT" >/dev/null
 rm -f patches/*.patch
-n=0
-for p in "$TMP"/*.patch; do
-  [ -s "$p" ] || continue
-  n=$((n+1))
-  cp "$p" "patches/$(basename "$p")"
-done
-rm -rf "$TMP"
-echo "$n patch(es) written to patches/:"
+cp "$OUT"/*.patch patches/
+echo "Wrote against $(git log -1 --format='%h %s' "$BASE_SHA"):"
 ls patches/*.patch

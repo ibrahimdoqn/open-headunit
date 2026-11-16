@@ -1857,4 +1857,13 @@
     <string name="usb_wireless_dongle_help">Kapcsold be, ha vezeték nélküli USB-adapterrel (például AAWireless vagy Carlinkit) csatlakozol. Az Open Headunit nem tudja megkülönböztetni az adaptert a kábeltől, ezért ez az opció vezeték nélkülire cseréli a kezdőképernyő feliratait.</string>
     <string name="home_subtitle_usb_dongle">Vezeték nélkül</string>
     <string name="home_action_connect_wireless_dongle">Csatlakozás vezeték nélkül</string>
+    <string name="join_wifi_before_server_search">Csatlakozás Wi-Fi-hez keresés előtt</string>
+    <string name="join_wifi_before_server_search_summary">Ha az egység még nincs Wi-Fi-n, a Wi-Fi gomb megvárja a csatlakozást.</string>
+    <string name="join_wifi_before_server_search_help">A Wi-Fi gomb a fejegység-szervert ennek az egységnek a Wi-Fi-hálózatán keresi. Ha az egység még nem csatlakozott a telefon hotspotjához, nincs hol keresni, ezért a próbálkozás azonnal véget ért. Ha ez be van kapcsolva, a gomb Wi-Fi-keresést kér az Androidtól, megvárja az egység csatlakozását, majd keres. A hálózatot az Android választja: előbb mentsd el a telefon hotspotját az egység Wi-Fi-beállításaiban. Ha a Wi-Fi ki van kapcsolva, az app megkér, hogy kapcsold be.</string>
+    <string name="join_wifi_timeout">Wi-Fi-csatlakozás időkorlátja</string>
+    <string name="join_wifi_timeout_help">Mennyi ideig várjon a Wi-Fi gomb, hogy az egység Wi-Fi-hez csatlakozzon, 10 és 120 másodperc között. Az idő leteltével az app egyszer akkor is keres.</string>
+    <string name="join_wifi_waiting">Előbb csatlakozás Wi-Fi-hez…</string>
+    <string name="join_wifi_still_waiting">Még mindig várakozás a Wi-Fi-re…</string>
+    <string name="join_wifi_timed_out">Nem sikerült Wi-Fi-hálózathoz csatlakozni. Be van kapcsolva a telefon hotspotja?</string>
+    <string name="join_wifi_turn_on">A Wi-Fi ki van kapcsolva. Kapcsold be; a keresés a csatlakozás után indul.</string>
 </resources>

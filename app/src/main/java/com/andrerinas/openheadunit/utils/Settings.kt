@@ -2,6 +2,7 @@ package com.andrerinas.openheadunit.utils
 
 import com.andrerinas.openheadunit.connection.usb.UsbAutoStartPolicy
 import com.andrerinas.openheadunit.connection.usb.UsbPlugInPolicy
+import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
 import android.annotation.SuppressLint
 import com.andrerinas.openheadunit.app.ExternalPowerDisconnectPolicy
 import android.content.ComponentName
@@ -2614,6 +2615,16 @@ class Settings(private val context: Context) {
     var waitForWifiTimeout: Int
         get() = prefs.getInt("wait-for-wifi-timeout", 10)
         set(value) { prefs.edit().putInt("wait-for-wifi-timeout", value).apply() }
+
+    /** Headunit Server: the WiFi button joins WiFi first when this unit is not on a network yet. */
+    var joinWifiBeforeServerSearch: Boolean
+        get() = prefs.getBoolean("join-wifi-before-server-search", true)
+        set(value) { prefs.edit().putBoolean("join-wifi-before-server-search", value).apply() }
+
+    /** Seconds the WiFi button waits for that join. See [WifiJoinWaitPolicy.clampTimeoutSec]. */
+    var joinWifiTimeout: Int
+        get() = WifiJoinWaitPolicy.clampTimeoutSec(prefs.getInt("join-wifi-timeout", WifiJoinWaitPolicy.DEFAULT_TIMEOUT_SEC))
+        set(value) { prefs.edit().putInt("join-wifi-timeout", WifiJoinWaitPolicy.clampTimeoutSec(value)).apply() }
 
     var helperConnectionStrategy: HelperStrategy
         get() = HelperStrategy.byIdOrDefault(prefs.getInt("helper-connection-strategy", -1))

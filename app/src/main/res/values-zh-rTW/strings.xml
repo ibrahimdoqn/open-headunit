@@ -1855,4 +1855,13 @@
     <string name="usb_wireless_dongle_help">如果您透過 AAWireless 或 Carlinkit 等無線 USB 轉接器連線，請開啟此選項。Open Headunit 無法區分轉接器與傳輸線，開啟後會將主畫面文字從有線改為無線。</string>
     <string name="home_subtitle_usb_dongle">無線連線</string>
     <string name="home_action_connect_wireless_dongle">無線連線</string>
+    <string name="join_wifi_before_server_search">搜尋前先連上 Wi-Fi</string>
+    <string name="join_wifi_before_server_search_summary">如果本機尚未連上 Wi-Fi，Wi-Fi 按鈕會等待連線完成。</string>
+    <string name="join_wifi_before_server_search_help">Wi-Fi 按鈕會在本機所在的 Wi-Fi 網路中尋找 Headunit Server。本機尚未連上手機熱點時無處可搜，先前嘗試會立即結束。開啟後，按鈕會請 Android 掃描 Wi-Fi，等本機連上後再搜尋。網路由 Android 自行選擇：請先在本機的 Wi-Fi 設定中儲存手機熱點。如果 Wi-Fi 已關閉，應用程式會提示你開啟。</string>
+    <string name="join_wifi_timeout">Wi-Fi 連線逾時</string>
+    <string name="join_wifi_timeout_help">Wi-Fi 按鈕等待本機連上 Wi-Fi 的時間，10 到 120 秒。逾時後應用程式仍會搜尋一次。</string>
+    <string name="join_wifi_waiting">正在先連上 Wi-Fi…</string>
+    <string name="join_wifi_still_waiting">仍在等待 Wi-Fi…</string>
+    <string name="join_wifi_timed_out">未連上任何 Wi-Fi 網路。手機熱點是否已開啟？</string>
+    <string name="join_wifi_turn_on">Wi-Fi 已關閉。請開啟，連上後即開始搜尋。</string>
 </resources>

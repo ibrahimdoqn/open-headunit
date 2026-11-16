@@ -1859,4 +1859,13 @@
     <string name="usb_wireless_dongle_help">AAWireless や Carlinkit などのワイヤレス USB アダプターで接続する場合に有効にします。Open Headunit はドングルとケーブルを判別できないため、ホーム画面の表示をケーブルからワイヤレスに切り替えます。</string>
     <string name="home_subtitle_usb_dongle">ワイヤレス接続</string>
     <string name="home_action_connect_wireless_dongle">ワイヤレスで接続</string>
+    <string name="join_wifi_before_server_search">検索の前にWi-Fiに接続</string>
+    <string name="join_wifi_before_server_search_summary">このユニットがまだWi-Fiにつながっていない場合、Wi-Fiボタンは接続を待ちます。</string>
+    <string name="join_wifi_before_server_search_help">Wi-Fiボタンは、このユニットのWi-FiネットワークでHeadunit Serverを探します。スマートフォンのテザリングにまだ接続していないユニットでは探す先がなく、試行はすぐに終わっていました。オンにすると、ボタンはAndroidにWi-Fiのスキャンを依頼し、ユニットの接続を待ってから検索します。ネットワークはAndroidが選ぶため、先にスマートフォンのテザリングをこのユニットのWi-Fi設定に保存してください。Wi-Fiがオフの場合は、オンにするよう求めます。</string>
+    <string name="join_wifi_timeout">Wi-Fi接続のタイムアウト</string>
+    <string name="join_wifi_timeout_help">Wi-FiボタンがこのユニットのWi-Fi接続を待つ時間（10〜120秒）。時間切れになっても、アプリは一度だけ検索します。</string>
+    <string name="join_wifi_waiting">まずWi-Fiに接続しています…</string>
+    <string name="join_wifi_still_waiting">Wi-Fiを待っています…</string>
+    <string name="join_wifi_timed_out">Wi-Fiに接続できませんでした。スマートフォンのテザリングはオンですか？</string>
+    <string name="join_wifi_turn_on">Wi-Fiがオフです。オンにすると、接続後に検索が始まります。</string>
 </resources>

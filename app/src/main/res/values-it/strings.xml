@@ -1859,4 +1859,13 @@
     <string name="usb_wireless_dongle_help">Attiva questa opzione se ti colleghi tramite un adattatore USB wireless come AAWireless o Carlinkit. Open Headunit non può distinguere un dongle da un cavo, quindi questa opzione cambia le etichette della schermata iniziale da cavo a wireless.</string>
     <string name="home_subtitle_usb_dongle">In modalità wireless</string>
     <string name="home_action_connect_wireless_dongle">Connetti in modalità wireless</string>
+    <string name="join_wifi_before_server_search">Connetti al WiFi prima di cercare</string>
+    <string name="join_wifi_before_server_search_summary">Se l\'unità non è ancora sul WiFi, il pulsante WiFi attende la connessione.</string>
+    <string name="join_wifi_before_server_search_help">Il pulsante WiFi cerca l\'Headunit Server sulla rete WiFi di questa unità. Un\'unità non ancora collegata all\'hotspot del telefono non ha nulla in cui cercare, quindi il tentativo finiva subito. Con questa opzione, il pulsante chiede ad Android di cercare reti WiFi, attende che l\'unità si colleghi e poi cerca. La rete la sceglie Android: salva prima l\'hotspot del telefono nelle impostazioni WiFi di questa unità. Se il WiFi è spento, l\'app ti chiede di accenderlo.</string>
+    <string name="join_wifi_timeout">Timeout connessione WiFi</string>
+    <string name="join_wifi_timeout_help">Quanto il pulsante WiFi attende che questa unità si colleghi al WiFi, da 10 a 120 secondi. Allo scadere, l\'app cerca comunque una volta.</string>
+    <string name="join_wifi_waiting">Connessione al WiFi in corso…</string>
+    <string name="join_wifi_still_waiting">Ancora in attesa del WiFi…</string>
+    <string name="join_wifi_timed_out">Nessuna rete WiFi collegata. L\'hotspot del telefono è attivo?</string>
+    <string name="join_wifi_turn_on">Il WiFi è spento. Accendilo; la ricerca parte appena si collega.</string>
 </resources>

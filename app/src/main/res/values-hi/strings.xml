@@ -1903,4 +1903,13 @@
     <string name="usb_wireless_dongle_help">यदि आप AAWireless या Carlinkit जैसे वायरलेस USB अडैप्टर से कनेक्ट करते हैं तो इसे चालू करें। Open Headunit डोंगल और केबल में अंतर नहीं कर सकता, इसलिए यह विकल्प होम स्क्रीन के लेबल को केबल से वायरलेस में बदल देता है।</string>
     <string name="home_subtitle_usb_dongle">वायरलेस रूप से</string>
     <string name="home_action_connect_wireless_dongle">वायरलेस कनेक्ट करें</string>
+    <string name="join_wifi_before_server_search">खोजने से पहले वाई-फ़ाई से जुड़ें</string>
+    <string name="join_wifi_before_server_search_summary">यूनिट अभी वाई-फ़ाई पर नहीं है, तो वाई-फ़ाई बटन जुड़ने का इंतज़ार करता है।</string>
+    <string name="join_wifi_before_server_search_help">वाई-फ़ाई बटन इस यूनिट के वाई-फ़ाई नेटवर्क पर हेडयूनिट सर्वर खोजता है। जो यूनिट अभी फ़ोन के हॉटस्पॉट से नहीं जुड़ी, उसके पास खोजने को कुछ नहीं होता, इसलिए प्रयास तुरंत खत्म हो जाता था। यह चालू होने पर बटन Android से वाई-फ़ाई स्कैन करवाता है, यूनिट के जुड़ने तक इंतज़ार करता है, फिर खोजता है। नेटवर्क Android खुद चुनता है: पहले फ़ोन का हॉटस्पॉट इस यूनिट की वाई-फ़ाई सेटिंग में सेव करें। वाई-फ़ाई बंद हो तो ऐप उसे चालू करने को कहता है।</string>
+    <string name="join_wifi_timeout">वाई-फ़ाई से जुड़ने की समय सीमा</string>
+    <string name="join_wifi_timeout_help">वाई-फ़ाई बटन इस यूनिट के वाई-फ़ाई से जुड़ने का कितनी देर इंतज़ार करे, 10 से 120 सेकंड। समय खत्म होने पर ऐप फिर भी एक बार खोजता है।</string>
+    <string name="join_wifi_waiting">पहले वाई-फ़ाई से जुड़ रहे हैं…</string>
+    <string name="join_wifi_still_waiting">अभी भी वाई-फ़ाई का इंतज़ार है…</string>
+    <string name="join_wifi_timed_out">किसी वाई-फ़ाई नेटवर्क से नहीं जुड़ा। क्या फ़ोन का हॉटस्पॉट चालू है?</string>
+    <string name="join_wifi_turn_on">वाई-फ़ाई बंद है। उसे चालू करें; जुड़ते ही खोज शुरू होगी।</string>
 </resources>

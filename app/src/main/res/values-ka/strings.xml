@@ -1842,4 +1842,13 @@
     <string name="usb_wireless_dongle_help">ჩართეთ, თუ უკავშირდებით უსადენო USB ადაპტერით (მაგ. AAWireless ან Carlinkit). Open Headunit ვერ ასხვავებს დონგლს კაბელისგან, ამიტომ ეს პარამეტრი მთავარ ეკრანზე წარწერებს კაბელიდან უსადენოზე ცვლის.</string>
     <string name="home_subtitle_usb_dongle">უსადენოდ</string>
     <string name="home_action_connect_wireless_dongle">უსადენოდ დაკავშირება</string>
+    <string name="join_wifi_before_server_search">ძებნამდე WiFi-სთან დაკავშირება</string>
+    <string name="join_wifi_before_server_search_summary">თუ მოწყობილობა ჯერ WiFi-ზე არ არის, WiFi ღილაკი დაკავშირებას დაელოდება.</string>
+    <string name="join_wifi_before_server_search_help">WiFi ღილაკი Headunit Server-ს ამ მოწყობილობის WiFi ქსელში ეძებს. მოწყობილობას, რომელიც ჯერ ტელეფონის ჰოტსპოტს არ დაუკავშირდა, საძებნი არაფერი აქვს, ამიტომ მცდელობა მაშინვე მთავრდებოდა. როცა ეს ჩართულია, ღილაკი Android-ს WiFi-ს სკანირებას სთხოვს, ელოდება დაკავშირებას და შემდეგ ეძებს. ქსელს Android ირჩევს: ჯერ ტელეფონის ჰოტსპოტი შეინახეთ ამ მოწყობილობის WiFi პარამეტრებში. თუ WiFi გამორთულია, აპი ჩართვას გთხოვთ.</string>
+    <string name="join_wifi_timeout">WiFi-სთან დაკავშირების დროის ლიმიტი</string>
+    <string name="join_wifi_timeout_help">რამდენ ხანს ელოდება WiFi ღილაკი ამ მოწყობილობის WiFi-სთან დაკავშირებას, 10-დან 120 წამამდე. დროის ამოწურვის შემდეგ აპი მაინც ერთხელ ეძებს.</string>
+    <string name="join_wifi_waiting">ჯერ WiFi-სთან დაკავშირება…</string>
+    <string name="join_wifi_still_waiting">ჯერ კიდევ ველოდებით WiFi-ს…</string>
+    <string name="join_wifi_timed_out">WiFi ქსელს ვერ დაუკავშირდა. ჩართულია ტელეფონის ჰოტსპოტი?</string>
+    <string name="join_wifi_turn_on">WiFi გამორთულია. ჩართეთ; ძებნა დაკავშირებისთანავე დაიწყება.</string>
 </resources>

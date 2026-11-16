@@ -1858,4 +1858,13 @@
     <string name="usb_wireless_dongle_help">فعّل هذا الخيار إذا كنت تتصل عبر محول USB لاسلكي مثل AAWireless أو Carlinkit. لا يستطيع Open Headunit التمييز بين الدونجل والكابل، لذا يغيّر هذا الخيار تسميات الشاشة الرئيسية من سلكي إلى لاسلكي.</string>
     <string name="home_subtitle_usb_dongle">لاسلكياً</string>
     <string name="home_action_connect_wireless_dongle">الاتصال لاسلكياً</string>
+    <string name="join_wifi_before_server_search">الاتصال بشبكة WiFi قبل البحث</string>
+    <string name="join_wifi_before_server_search_summary">إذا لم تكن الوحدة متصلة بشبكة WiFi بعد، ينتظر زر WiFi اتصالها.</string>
+    <string name="join_wifi_before_server_search_help">يبحث زر WiFi عن خادم Headunit على شبكة WiFi لهذه الوحدة. الوحدة التي لم تتصل بعد بنقطة اتصال الهاتف لا تجد ما تبحث فيه، فكانت المحاولة تنتهي فورًا. عند تفعيل هذا الخيار، يطلب الزر من Android البحث عن شبكات WiFi، وينتظر حتى تتصل الوحدة، ثم يبحث. يختار Android الشبكة بنفسه: احفظ نقطة اتصال الهاتف أولًا في إعدادات WiFi لهذه الوحدة. إذا كان WiFi مغلقًا، يطلب منك التطبيق تشغيله.</string>
+    <string name="join_wifi_timeout">مهلة الاتصال بشبكة WiFi</string>
+    <string name="join_wifi_timeout_help">المدة التي ينتظرها زر WiFi حتى تتصل هذه الوحدة بشبكة WiFi، من 10 إلى 120 ثانية. عند انتهاء المهلة يبحث التطبيق مرة واحدة على أي حال.</string>
+    <string name="join_wifi_waiting">جارٍ الاتصال بشبكة WiFi أولًا…</string>
+    <string name="join_wifi_still_waiting">ما زال في انتظار WiFi…</string>
+    <string name="join_wifi_timed_out">لم يتم الاتصال بأي شبكة WiFi. هل نقطة اتصال الهاتف مفعّلة؟</string>
+    <string name="join_wifi_turn_on">شبكة WiFi مغلقة. شغّلها؛ يبدأ البحث فور الاتصال.</string>
 </resources>

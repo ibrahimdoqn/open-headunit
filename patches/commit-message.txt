@@ -1,0 +1,21 @@
+Headunit Server: join WiFi before the WiFi button's search
+
+The WiFi button's one-shot search probes this unit's own subnet. A unit
+that has not joined the phone's hotspot yet has no subnet to probe, so
+the search ended at once and the user had to press again. Android 10
+units are the slow case: the platform's reconnect scans back off while
+nothing is connected, so a saved hotspot can sit in range for a minute.
+
+With "Join WiFi before searching" on (Wireless Connection, Headunit
+Server, Auto; on by default), the button:
+- searches at once, as before, when the unit is already on WiFi;
+- otherwise asks Android to scan for WiFi, paced to the foreground
+  budget of four scans in two minutes (WifiJoinWaitPolicy), and waits
+  for a WiFi network, up to the "WiFi join timeout" (10-120 s, 30 s);
+- shows the wait on the home card as "Preparing the network", and uses
+  the pill rather than the overlay, whose 30 s bound could end mid-wait;
+- switches WiFi on below Android 10, or opens the WiFi panel above it;
+- searches once the join settles, or once anyway on timeout.
+
+A second press while waiting keeps the wait; the status pill's X ends it.
+Both settings are carried in the settings backup.

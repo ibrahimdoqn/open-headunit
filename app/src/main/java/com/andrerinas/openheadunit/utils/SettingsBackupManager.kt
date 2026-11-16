@@ -269,6 +269,8 @@ object SettingsBackupManager {
         "auto-enable-hotspot" to ValueType.BOOLEAN,
         "wait-for-wifi-before-wifi-direct" to ValueType.BOOLEAN,
         "wait-for-wifi-timeout" to ValueType.INT,
+        "join-wifi-before-server-search" to ValueType.BOOLEAN,
+        "join-wifi-timeout" to ValueType.INT,
         "helper-connection-strategy" to ValueType.INT,
         "bluetooth-manager-service-name" to ValueType.STRING,
         // On by default, so what is worth carrying is the opt-out: a user who turned it off should

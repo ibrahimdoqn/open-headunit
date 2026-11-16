@@ -1851,4 +1851,13 @@
     <string name="usb_wireless_dongle_help">AAWireless 또는 Carlinkit 같은 무선 USB 어댑터를 통해 연결하는 경우 켜세요. Open Headunit은 동글과 일반 케이블을 구분할 수 없으므로, 이 옵션으로 홈 화면 표시를 유선에서 무선으로 바꿉니다.</string>
     <string name="home_subtitle_usb_dongle">무선으로</string>
     <string name="home_action_connect_wireless_dongle">무선으로 연결</string>
+    <string name="join_wifi_before_server_search">검색 전에 Wi-Fi 연결</string>
+    <string name="join_wifi_before_server_search_summary">기기가 아직 Wi-Fi에 연결되지 않았으면 Wi-Fi 버튼이 연결을 기다립니다.</string>
+    <string name="join_wifi_before_server_search_help">Wi-Fi 버튼은 이 기기의 Wi-Fi 네트워크에서 헤드유닛 서버를 찾습니다. 아직 휴대폰 핫스팟에 연결되지 않은 기기는 찾을 곳이 없어 시도가 바로 끝났습니다. 이 옵션을 켜면 버튼이 Android에 Wi-Fi 검색을 요청하고, 기기가 연결될 때까지 기다린 뒤 검색합니다. 네트워크는 Android가 고르므로 먼저 휴대폰 핫스팟을 이 기기의 Wi-Fi 설정에 저장하세요. Wi-Fi가 꺼져 있으면 앱이 켜 달라고 요청합니다.</string>
+    <string name="join_wifi_timeout">Wi-Fi 연결 대기 시간</string>
+    <string name="join_wifi_timeout_help">Wi-Fi 버튼이 이 기기의 Wi-Fi 연결을 기다리는 시간으로, 10~120초입니다. 시간이 지나도 앱은 한 번은 검색합니다.</string>
+    <string name="join_wifi_waiting">먼저 Wi-Fi에 연결하는 중…</string>
+    <string name="join_wifi_still_waiting">아직 Wi-Fi를 기다리는 중…</string>
+    <string name="join_wifi_timed_out">Wi-Fi 네트워크에 연결되지 않았습니다. 휴대폰 핫스팟이 켜져 있나요?</string>
+    <string name="join_wifi_turn_on">Wi-Fi가 꺼져 있습니다. 켜면 연결 후 검색이 시작됩니다.</string>
 </resources>

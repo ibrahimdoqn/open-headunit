@@ -1902,4 +1902,13 @@
     <string name="usb_wireless_dongle_help">Activez cette option si vous utilisez un adaptateur USB sans fil comme AAWireless ou Carlinkit. Open Headunit ne peut pas différencier un dongle d’un câble ; cette option remplace donc les libellés câble par sans fil sur l’écran d’accueil.</string>
     <string name="home_subtitle_usb_dongle">Sans fil</string>
     <string name="home_action_connect_wireless_dongle">Connecter sans fil</string>
+    <string name="join_wifi_before_server_search">Rejoindre le Wi-Fi avant la recherche</string>
+    <string name="join_wifi_before_server_search_summary">Si l\'unité n\'est pas encore en Wi-Fi, le bouton Wi-Fi attend la connexion.</string>
+    <string name="join_wifi_before_server_search_help">Le bouton Wi-Fi cherche le Headunit Server sur le réseau Wi-Fi de cette unité. Une unité qui n\'a pas encore rejoint le point d\'accès du téléphone n\'a rien à chercher, et la tentative s\'arrêtait aussitôt. Avec cette option, le bouton demande à Android de rechercher les réseaux Wi-Fi, attend que l\'unité se connecte, puis cherche. Android choisit le réseau : enregistrez d\'abord le point d\'accès du téléphone dans les réglages Wi-Fi de l\'unité. Si le Wi-Fi est désactivé, l\'application vous demande de l\'activer.</string>
+    <string name="join_wifi_timeout">Délai de connexion Wi-Fi</string>
+    <string name="join_wifi_timeout_help">Durée pendant laquelle le bouton Wi-Fi attend que l\'unité rejoigne le Wi-Fi, de 10 à 120 secondes. Une fois le délai écoulé, l\'application cherche quand même une fois.</string>
+    <string name="join_wifi_waiting">Connexion au Wi-Fi d\'abord…</string>
+    <string name="join_wifi_still_waiting">Toujours en attente du Wi-Fi…</string>
+    <string name="join_wifi_timed_out">Aucun réseau Wi-Fi rejoint. Le point d\'accès du téléphone est-il activé ?</string>
+    <string name="join_wifi_turn_on">Le Wi-Fi est désactivé. Activez-le ; la recherche démarre une fois connecté.</string>
 </resources>

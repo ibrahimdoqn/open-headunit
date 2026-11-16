@@ -1855,4 +1855,13 @@
     <string name="usb_wireless_dongle_help">Activează această opțiune dacă te conectezi printr-un adaptor USB wireless precum AAWireless sau Carlinkit. Open Headunit nu poate deosebi un dongle de un cablu, așa că această opțiune schimbă etichetele de pe ecranul principal din cablu în wireless.</string>
     <string name="home_subtitle_usb_dongle">Wireless</string>
     <string name="home_action_connect_wireless_dongle">Conectează wireless</string>
+    <string name="join_wifi_before_server_search">Conectează la WiFi înainte de căutare</string>
+    <string name="join_wifi_before_server_search_summary">Dacă unitatea nu e încă pe WiFi, butonul WiFi așteaptă conectarea.</string>
+    <string name="join_wifi_before_server_search_help">Butonul WiFi caută serverul Headunit în rețeaua WiFi a acestei unități. O unitate care nu s-a conectat încă la hotspotul telefonului nu are unde căuta, așa că încercarea se termina imediat. Cu această opțiune, butonul cere Android să caute rețele WiFi, așteaptă conectarea unității, apoi caută. Rețeaua o alege Android: salvează mai întâi hotspotul telefonului în setările WiFi ale unității. Dacă WiFi e oprit, aplicația îți cere să-l pornești.</string>
+    <string name="join_wifi_timeout">Limita de conectare WiFi</string>
+    <string name="join_wifi_timeout_help">Cât așteaptă butonul WiFi ca unitatea să se conecteze la WiFi, între 10 și 120 de secunde. La expirare, aplicația caută totuși o dată.</string>
+    <string name="join_wifi_waiting">Mai întâi conectare la WiFi…</string>
+    <string name="join_wifi_still_waiting">Încă se așteaptă WiFi…</string>
+    <string name="join_wifi_timed_out">Nicio rețea WiFi conectată. Este pornit hotspotul telefonului?</string>
+    <string name="join_wifi_turn_on">WiFi este oprit. Pornește-l; căutarea începe după conectare.</string>
 </resources>

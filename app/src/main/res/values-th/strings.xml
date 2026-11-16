@@ -1910,4 +1910,13 @@
     <string name="usb_wireless_dongle_help">เปิดใช้งานตัวเลือกนี้หากคุณเชื่อมต่อผ่านอะแดปเตอร์ USB ไร้สาย เช่น AAWireless หรือ Carlinkit Open Headunit ไม่สามารถแยกดองเกิลออกจากสายเคเบิลได้ ตัวเลือกนี้จึงเปลี่ยนข้อความบนหน้าจอหลักจากสายเคเบิลเป็นไร้สาย</string>
     <string name="home_subtitle_usb_dongle">แบบไร้สาย</string>
     <string name="home_action_connect_wireless_dongle">เชื่อมต่อแบบไร้สาย</string>
+    <string name="join_wifi_before_server_search">เชื่อมต่อ Wi-Fi ก่อนค้นหา</string>
+    <string name="join_wifi_before_server_search_summary">ถ้าเครื่องยังไม่ได้ต่อ Wi-Fi ปุ่ม Wi-Fi จะรอจนเชื่อมต่อได้</string>
+    <string name="join_wifi_before_server_search_help">ปุ่ม Wi-Fi จะค้นหาเซิร์ฟเวอร์เฮดยูนิตในเครือข่าย Wi-Fi ของเครื่องนี้ เครื่องที่ยังไม่ได้ต่อฮอตสปอตของโทรศัพท์จะไม่มีที่ให้ค้นหา การลองจึงจบทันที เมื่อเปิดตัวเลือกนี้ ปุ่มจะขอให้ Android สแกน Wi-Fi รอจนเครื่องเชื่อมต่อ แล้วจึงค้นหา Android เป็นผู้เลือกเครือข่าย: ให้บันทึกฮอตสปอตของโทรศัพท์ในการตั้งค่า Wi-Fi ของเครื่องนี้ก่อน ถ้า Wi-Fi ปิดอยู่ แอปจะขอให้คุณเปิด</string>
+    <string name="join_wifi_timeout">ระยะเวลารอเชื่อมต่อ Wi-Fi</string>
+    <string name="join_wifi_timeout_help">ระยะเวลาที่ปุ่ม Wi-Fi รอให้เครื่องนี้เชื่อมต่อ Wi-Fi ตั้งแต่ 10 ถึง 120 วินาที เมื่อหมดเวลา แอปจะยังค้นหาหนึ่งครั้ง</string>
+    <string name="join_wifi_waiting">กำลังเชื่อมต่อ Wi-Fi ก่อน…</string>
+    <string name="join_wifi_still_waiting">ยังรอ Wi-Fi อยู่…</string>
+    <string name="join_wifi_timed_out">ไม่ได้เชื่อมต่อเครือข่าย Wi-Fi ใดเลย ฮอตสปอตของโทรศัพท์เปิดอยู่หรือไม่</string>
+    <string name="join_wifi_turn_on">Wi-Fi ปิดอยู่ เปิดแล้วการค้นหาจะเริ่มเมื่อเชื่อมต่อได้</string>
 </resources>
