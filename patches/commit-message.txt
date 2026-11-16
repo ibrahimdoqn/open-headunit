@@ -24,6 +24,22 @@ without pressing anything. The WiFi button:
 - searches once the join settles, or once anyway on timeout.
 
 A second press while waiting keeps the wait; the status pill's X ends it.
+
+Automatic connection (Headunit Server, Auto; on by default):
+- a start delay (0-60 s, 15 s) counted down on the home card with
+  Connect now / Cancel; opening settings stops it, leaving restarts it;
+  off, only the WiFi button connects;
+- the card says what the search waits for: the phone's WiFi, a hotspot
+  not in range, another network, "WiFi connected, connecting to the
+  phone", or the phone's head unit server being off (port 5277 refused
+  rather than unanswered);
+- quick retries (1-3 s) after a join or a dropped session instead of
+  the loop's 10 s, still one sweep at a time;
+- the phone's network and address learned from the last session; a
+  refusing gateway that is the known phone skips the subnet sweep;
+- the home screen's "last session" auto-connect no longer dials the
+  phone's last address beside the search;
+- one "Timeline:" line per connection in the log.
 Both settings are carried in the settings backup.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

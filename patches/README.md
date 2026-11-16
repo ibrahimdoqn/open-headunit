@@ -12,23 +12,32 @@ Upstream güncellenince patch'i yeni sürümün üstüne tekrar uygulayıp APK'y
 
 ## Patch ne yapar
 
-Ayarlar → **Kablosuz bağlantı** → Headunit Server → **Otomatik** altında iki yeni satır:
+Ayarlar → **Kablosuz bağlantı** → Headunit Server → **Otomatik** altında **Otomatik bağlantı** grubu:
 
-- **Aramadan önce WiFi'ye bağlan** (varsayılan: açık)
-- **WiFi bağlanma zaman aşımı** (10–120 sn, varsayılan 30 sn)
+| Ayar | Varsayılan | Ne yapar |
+|---|---|---|
+| Otomatik bağlan | açık | Uygulama açılınca telefonu kendisi arar. Kapalıyken yalnızca WiFi tuşu bağlanır. |
+| Başlangıç gecikmesi | 15 sn (0–60) | Aramadan önce ana ekran kartında geri sayar (Şimdi bağlan / İptal). Ayarlar açılınca durur, çıkınca baştan başlar. |
+| Aramadan önce WiFi'ye bağlan | açık | Ünite WiFi'de değilken boşa aramaz; WiFi taraması ister, bağlanır bağlanmaz arar. |
+| WiFi bağlanma zaman aşımı | 30 sn | Yalnızca WiFi tuşunun bekleme süresi. |
+| Telefonun ağı | kendiliğinden öğrenilir | Son bağlantının WiFi ağı; dokununca unutulur. |
 
-Açıkken, ünite WiFi'de değilse **arka plandaki telefon araması** boşa
-aramak yerine durur, Android'den WiFi taraması ister ve WiFi bağlandığı an
-aramaya devam eder. Bu açılışta da çalışır; tuşa basmak gerekmez.
+Kartta görünen adımlar:
 
-**WiFi ile bağlan** tuşu ayrıca şunları yapar:
+- **Yeniden bağlanıyor (geri sayım)**: başlangıç gecikmesi
+- **Telefonun WiFi'si bekleniyor**: ünite WiFi'de değil, tarama yapılıyor
+- **Telefonun erişim noktası görünmüyor**: öğrenilen ağ 20 sn boyunca taramada yok (konum açık olmalı)
+- **Başka bir WiFi ağına bağlı**: ünite telefonun ağı yerine başka bir ağa bağlandı
+- **WiFi bağlandı, telefona bağlanılıyor**: 1–3 sn aralıklarla hızlı deneme
+- **Telefonda Headunit Server kapalı**: telefon cevap veriyor ama 5277 reddediliyor; bir kez nasıl açılacağı da söylenir
+- **Bağlanıyor → Android Auto**
 
-1. Ünite WiFi'ye zaten bağlıysa eskisi gibi hemen arar.
-2. Bağlı değilse Android'den WiFi taraması ister. Taramalar, Android'in iki dakikada dört tarama sınırına göre zamanlanır.
-3. Beklerken ana ekran kartında "Ağ hazırlanıyor" adımı görünür. Tam ekran kaplama açılmaz.
-4. WiFi kapalıysa Android 10 altında kendisi açar, Android 10 ve üstünde WiFi panelini açar.
-5. WiFi bağlanınca Headunit Server'ı arar. Süre dolarsa uyarı verir ve yine de bir kez arar.
-6. Beklerken tuşa tekrar basmak beklemeyi bozmaz. Durum göstergesindeki X beklemeyi bitirir.
+Ayrıca:
+
+- "Son oturuma bağlan" artık son telefon adresini aramayla aynı anda aramıyor (çift bağlantı telefonun sunucusunu kilitleyebiliyordu).
+- Logda her bağlantı için tek satır: `HuAutoConnect: Timeline: start->search 15.0s -> WiFi 8.2s -> phone 1.1s -> handshake 0.4s -> projection 2.1s (network=..., 5180 MHz)`
+
+**WiFi ile bağlan** tuşu: geri sayımı bitirip hemen arar; WiFi yoksa kartta "Ağ hazırlanıyor" gösterip en fazla 30 sn bekler, WiFi kapalıysa açmanızı ister.
 
 ## Upstream güncellenince
 
@@ -71,6 +80,9 @@ Kodu değiştirip commit ettikten sonra:
 
 ## Değişen dosyalar
 
+- `connection/wifi/autoconnect/`: yeni klasör. Otomatik bağlantı (`HeadunitServerAutoConnect`) ve kuralları (`HeadunitServerAutoConnectPolicy`), testleriyle.
+- `connection/ConnectionStage*.kt`, `main/StatusPillPolicy.kt`, `main/HomePrimaryPolicy.kt`: yeni kart adımları.
+- `connection/wifi/NetworkDiscovery.kt`, `WifiLauncherSharedServices.kt`: "sunucu kapalı" ayrımı ve hızlı denemeler.
 - `connection/wifi/WifiJoinWaitPolicy.kt`: yeni dosya. Bekleme kuralları ve tarama zamanlaması burada, birim testi de var.
 - `connection/wifi/WifiJoinWaiter.kt`: yeni dosya. Tarama, ağ dinleme ve zaman aşımı burada.
 - `aap/AapService.kt`: WiFi tuşunun tek seferlik aramasını bu bekleyiciden geçirir.

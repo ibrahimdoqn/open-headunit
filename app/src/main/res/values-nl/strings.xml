@@ -1870,4 +1870,8 @@
     <string name="join_wifi_still_waiting">Nog steeds wachten op wifi…</string>
     <string name="join_wifi_timed_out">Geen wifinetwerk verbonden. Staat de hotspot van de telefoon aan?</string>
     <string name="join_wifi_turn_on">Wifi staat uit. Zet het aan; het zoeken begint zodra er verbinding is.</string>
+    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
+    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
+    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
+    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
 </resources>

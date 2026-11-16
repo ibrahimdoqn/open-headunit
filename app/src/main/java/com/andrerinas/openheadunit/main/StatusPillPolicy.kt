@@ -34,6 +34,10 @@ object StatusPillPolicy {
         ConnectionStage.WAITING_FOR_PHONE,
         ConnectionStage.SEARCHING,
         ConnectionStage.USB_ATTACHED,
+        ConnectionStage.WAITING_FOR_WIFI,
+        ConnectionStage.PHONE_WIFI_NOT_VISIBLE,
+        ConnectionStage.OTHER_WIFI,
+        ConnectionStage.SERVER_CLOSED,
     )
 
     fun isWaiting(stage: ConnectionStage): Boolean = stage in waitingStages

@@ -65,6 +65,8 @@ class SettingsPendingCopy {
     var waitForWifiTimeout: Int? = null
     var joinWifiBeforeServerSearch: Boolean? = null
     var joinWifiTimeout: Int? = null
+    var headunitServerAutoConnect: Boolean? = null
+    var headunitServerStartDelaySec: Int? = null
     var bluetoothManagerServiceName: String? = null
     var nativeAaIgnoreExternalBt: Boolean? = null
     var externalBtZbtTransport: Boolean? = null
@@ -162,6 +164,8 @@ class SettingsPendingCopy {
         waitForWifiTimeout = settings.waitForWifiTimeout
         joinWifiBeforeServerSearch = settings.joinWifiBeforeServerSearch
         joinWifiTimeout = settings.joinWifiTimeout
+        headunitServerAutoConnect = settings.headunitServerAutoConnect
+        headunitServerStartDelaySec = settings.headunitServerStartDelaySec
         bluetoothManagerServiceName = settings.bluetoothManagerServiceName
         nativeAaIgnoreExternalBt = settings.nativeAaIgnoreExternalBt
         externalBtZbtTransport = settings.externalBtZbtTransport
@@ -260,6 +264,8 @@ class SettingsPendingCopy {
         waitForWifiTimeout != settings.waitForWifiTimeout ||
         joinWifiBeforeServerSearch != settings.joinWifiBeforeServerSearch ||
         joinWifiTimeout != settings.joinWifiTimeout ||
+        headunitServerAutoConnect != settings.headunitServerAutoConnect ||
+        headunitServerStartDelaySec != settings.headunitServerStartDelaySec ||
         bluetoothManagerServiceName != settings.bluetoothManagerServiceName ||
         nativeAaIgnoreExternalBt != settings.nativeAaIgnoreExternalBt ||
         externalBtZbtTransport != settings.externalBtZbtTransport ||

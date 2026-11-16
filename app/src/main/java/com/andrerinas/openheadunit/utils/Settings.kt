@@ -3,6 +3,7 @@ package com.andrerinas.openheadunit.utils
 import com.andrerinas.openheadunit.connection.usb.UsbAutoStartPolicy
 import com.andrerinas.openheadunit.connection.usb.UsbPlugInPolicy
 import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
+import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnectPolicy
 import android.annotation.SuppressLint
 import com.andrerinas.openheadunit.app.ExternalPowerDisconnectPolicy
 import android.content.ComponentName
@@ -2620,6 +2621,35 @@ class Settings(private val context: Context) {
     var joinWifiBeforeServerSearch: Boolean
         get() = prefs.getBoolean("join-wifi-before-server-search", true)
         set(value) { prefs.edit().putBoolean("join-wifi-before-server-search", value).apply() }
+
+    /**
+     * Headunit Server, Auto: the service brings the search up by itself at startup, after a
+     * countdown of [headunitServerStartDelaySec]. Off, only the WiFi button connects.
+     */
+    var headunitServerAutoConnect: Boolean
+        get() = prefs.getBoolean("hu-server-auto-connect", true)
+        set(value) { prefs.edit().putBoolean("hu-server-auto-connect", value).apply() }
+
+    var headunitServerStartDelaySec: Int
+        get() = HeadunitServerAutoConnectPolicy.clampStartDelaySec(
+            prefs.getInt("hu-server-start-delay", HeadunitServerAutoConnectPolicy.DEFAULT_START_DELAY_SEC))
+        set(value) { prefs.edit().putInt("hu-server-start-delay", HeadunitServerAutoConnectPolicy.clampStartDelaySec(value)).apply() }
+
+    /**
+     * The phone's network, learned from the last Headunit Server session over WiFi. Device-local:
+     * not carried in the settings backup, since the next unit learns its own.
+     */
+    var headunitServerPhoneSsid: String
+        get() = prefs.getString("hu-server-phone-ssid", "") ?: ""
+        set(value) { prefs.edit().putString("hu-server-phone-ssid", value).apply() }
+
+    var headunitServerPhoneIp: String
+        get() = prefs.getString("hu-server-phone-ip", "") ?: ""
+        set(value) { prefs.edit().putString("hu-server-phone-ip", value).apply() }
+
+    fun forgetHeadunitServerPhoneNetwork() {
+        prefs.edit().remove("hu-server-phone-ssid").remove("hu-server-phone-ip").apply()
+    }
 
     /** Seconds the WiFi button waits for that join. See [WifiJoinWaitPolicy.clampTimeoutSec]. */
     var joinWifiTimeout: Int

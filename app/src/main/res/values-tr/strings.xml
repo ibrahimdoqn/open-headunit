@@ -1861,4 +1861,22 @@
     <string name="join_wifi_still_waiting">Hâlâ WiFi bekleniyor…</string>
     <string name="join_wifi_timed_out">Bir WiFi ağına bağlanılamadı. Telefonun erişim noktası açık mı?</string>
     <string name="join_wifi_turn_on">WiFi kapalı. Açın; bağlanınca arama başlar.</string>
+    <string name="hu_auto_connect_header">Otomatik bağlantı</string>
+    <string name="hu_auto_connect">Otomatik bağlan</string>
+    <string name="hu_auto_connect_summary">Uygulama açılınca telefonu kendiliğinden arar.</string>
+    <string name="hu_auto_connect_help">Bu açıkken uygulama telefonun Headunit Sunucusunu kendisi arar: uygulama açılınca aşağıdaki başlangıç gecikmesinden sonra, ve ayarlar ekranından çıkınca yeniden. Kapalıyken yalnızca WiFi tuşu bağlanır. Android Auto\'dan kendiniz çıkarsanız ya da geri sayımda İptal\'e basarsanız da WiFi tuşuna basana kadar durur.</string>
+    <string name="hu_start_delay">Başlangıç gecikmesi</string>
+    <string name="hu_start_delay_help">Uygulama açıldıktan sonra telefonu aramadan önce ne kadar bekleyeceği, 0 ile 60 saniye arası. Ana ekran kartı Şimdi bağlan ve İptal ile geri sayar. Ayarlar ekranını açmak geri sayımı durdurur, böylece rahatça ayar yapabilirsiniz; çıkınca baştan başlar.</string>
+    <string name="hu_phone_network">Telefonun ağı</string>
+    <string name="hu_phone_network_help">Son Headunit Server bağlantısının WiFi ağı, kendiliğinden öğrenilir. Beklerken uygulama bununla telefonun erişim noktasının görünmediğini ya da ünitenin başka bir ağa bağlandığını söyler. Ağ adlarını okumak için konumun açık olması gerekir. Unutmak için dokunun.</string>
+    <string name="hu_phone_network_unknown">Henüz öğrenilmedi</string>
+    <string name="hu_phone_network_forget_title">Telefonun ağı unutulsun mu?</string>
+    <string name="hu_phone_network_forget_message">\"%1$s\" bir sonraki bağlantıda yeniden öğrenilir.</string>
+    <string name="hu_phone_network_forget">Unut</string>
+    <string name="stage_waiting_for_wifi">Telefonun WiFi\'si bekleniyor</string>
+    <string name="stage_phone_wifi_not_visible">Telefonun erişim noktası görünmüyor</string>
+    <string name="stage_other_wifi">Başka bir WiFi ağına bağlı</string>
+    <string name="stage_server_closed">Telefonda Headunit Server kapalı</string>
+    <string name="stage_wifi_joined">WiFi bağlandı, telefona bağlanılıyor</string>
+    <string name="hu_server_closed_toast">Telefon cevap veriyor ama Headunit Server kapalı. Telefonda: Android Auto, Geliştirici ayarları, menü, Headunit sunucusunu başlat.</string>
 </resources>

@@ -15,9 +15,18 @@ import com.andrerinas.openheadunit.R
  */
 enum class ConnectionStage(val rank: Int, @StringRes val label: Int) {
     ARMED(10, R.string.stage_armed),
+    // Headunit Server's automatic connection, while the unit is not on the phone's WiFi yet. They
+    // can last as long as the phone is away, so they are listening steps, not progress.
+    WAITING_FOR_WIFI(12, R.string.stage_waiting_for_wifi),
+    PHONE_WIFI_NOT_VISIBLE(12, R.string.stage_phone_wifi_not_visible),
+    OTHER_WIFI(12, R.string.stage_other_wifi),
     USB_ATTACHED(20, R.string.stage_usb_attached),
     PREPARING_NETWORK(20, R.string.stage_preparing_network),
     SEARCHING(25, R.string.stage_searching),
+    // The phone answers on its hotspot but refuses port 5277: Android Auto's head unit server is off.
+    SERVER_CLOSED(26, R.string.stage_server_closed),
+    // Joined the phone's WiFi and dialling it: progress, shown until the quick retries are spent.
+    WIFI_JOINED(27, R.string.stage_wifi_joined),
     USB_SWITCHING(30, R.string.stage_usb_switching),
     CREATING_NETWORK(30, R.string.stage_creating_network),
     WAITING_FOR_PHONE(40, R.string.stage_waiting_for_phone),

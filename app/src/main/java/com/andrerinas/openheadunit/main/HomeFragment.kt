@@ -80,6 +80,7 @@ import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
 import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
 import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
 import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaiter
+import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnect
 import com.andrerinas.openheadunit.connection.wifi.WirelessSelectionPolicy
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
@@ -298,6 +299,13 @@ class HomeFragment : Fragment() {
             }
         }
 
+        // Headunit Server's startup countdown runs in the service; the card shows it as its own.
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                HeadunitServerAutoConnect.countdown.collect { renderHome() }
+            }
+        }
+
         // The card and the tiles tell the bring-up now, so they follow the tracker the pill reads.
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -427,6 +435,15 @@ class HomeFragment : Fragment() {
         }
     }
 
+    /** The card's buttons during Headunit Server's startup countdown, which the service owns. */
+    private fun sendHuAutoConnect(what: String) {
+        val ctx = context ?: return
+        ContextCompat.startForegroundService(ctx, Intent(ctx, AapService::class.java).apply {
+            action = AapService.ACTION_HU_AUTO_CONNECT
+            putExtra(AapService.EXTRA_HU_AUTO_CONNECT, what)
+        })
+    }
+
     private fun cancelAutoConnectCountdown() {
         autoConnectCancelled = true
         reconnectCountdown?.cancel()
@@ -438,6 +455,7 @@ class HomeFragment : Fragment() {
      * is running, so a later bring-up is never blocked by an old cancel.
      */
     fun stopAutoConnectCountdown() {
+        if (HeadunitServerAutoConnect.countdown.value != null) sendHuAutoConnect(AapService.HU_AUTO_CONNECT_CANCEL)
         if (reconnectCountdown?.isActive != true) return
         AppLog.i("HomeFragment: auto-connect countdown stopped by the bring-up's cancel")
         cancelAutoConnectCountdown()
@@ -455,7 +473,8 @@ class HomeFragment : Fragment() {
                 lastConnection = HomeUiHelper.lastConnection(appSettings),
                 usbPhoneDetected = usbPhone != null,
                 sessionActive = sessionLive(),
-                reconnectTarget = reconnectTarget,
+                reconnectTarget = reconnectTarget
+                    ?: HomePrimaryPolicy.Connection.WIFI.takeIf { HeadunitServerAutoConnect.countdown.value != null },
                 wifiScanning = AapService.scanningState.value,
                 sessionConnection = transportConnection().takeIf { sessionLive() },
                 stage = shownStage(),
@@ -476,7 +495,9 @@ class HomeFragment : Fragment() {
         )
         HomeUiHelper.applyBar(ctx, root, appSettings, barConnections, palette, decision.tiles)
         HomeUiHelper.applyPrimaryCard(
-            ctx, root, appSettings, decision, usbPhone?.let { phoneName(it) }, reconnectSecondsLeft, palette,
+            ctx, root, appSettings, decision, usbPhone?.let { phoneName(it) },
+            if (reconnectTarget != null) reconnectSecondsLeft else HeadunitServerAutoConnect.countdown.value ?: 0,
+            palette,
             networkLine = ConnectionStageTracker.network.value?.let { networkText(it) }
         )
         HomeUiHelper.fitDriverBar(root, appSettings.homeButtonScalePercent)
@@ -557,7 +578,8 @@ class HomeFragment : Fragment() {
         // (HomePrimaryPolicy.homeTellsBringUp): the card then shows the listening step with its own
         // Cancel, which is the one that stops the bring-up.
         if (decision?.status == HomePrimaryPolicy.Status.RECONNECTING) {
-            cancelAutoConnectCountdown()
+            if (reconnectCountdown?.isActive == true) cancelAutoConnectCountdown()
+            else sendHuAutoConnect(AapService.HU_AUTO_CONNECT_CANCEL)
         } else {
             (activity as? MainActivity)?.cancelBringUp("home Cancel")
         }
@@ -1697,7 +1719,13 @@ class HomeFragment : Fragment() {
 
         return when (connectionType) {
             Settings.CONNECTION_TYPE_WIFI -> {
-                if (appSettings.wifiConnectionMode == WifiLauncherMode.AUTO) {
+                if (appSettings.wifiConnectionMode == WifiLauncherMode.AUTO && appSettings.headunitServerAutoConnect) {
+                    // The service's own search finds the phone; dialling its last address as well
+                    // would be a second connection to the head unit server, which binds to the
+                    // first one it accepts and is deaf to the rest.
+                    AppLog.i("Auto-connect: Headunit Server automatic connection finds the phone itself; not dialling the last address")
+                    false
+                } else if (appSettings.wifiConnectionMode == WifiLauncherMode.AUTO) {
                     val ip = appSettings.lastConnectionIp
                     if (ip.isNotEmpty()) {
                         AppLog.i("Auto-connect: Attempting WiFi connection to $ip")
@@ -1798,7 +1826,9 @@ class HomeFragment : Fragment() {
         when (decision.status) {
             HomePrimaryPolicy.Status.ACTIVE_SESSION -> openProjection()
             // Ends the wait; the auto-connect that was counting down starts right away.
-            HomePrimaryPolicy.Status.RECONNECTING -> reconnectCountdown?.cancel()
+            HomePrimaryPolicy.Status.RECONNECTING ->
+                if (reconnectCountdown?.isActive == true) reconnectCountdown?.cancel()
+                else sendHuAutoConnect(AapService.HU_AUTO_CONNECT_NOW)
             else -> when (decision.primary) {
                 HomePrimaryPolicy.Connection.USB -> onUsbClicked()
                 HomePrimaryPolicy.Connection.WIFI -> onWifiClicked()

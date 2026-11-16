@@ -49,6 +49,15 @@ object ConnectionStageTracker {
         _stage.value = null
     }
 
+    /**
+     * What Headunit Server's automatic connection knows right now, replacing the step on show
+     * even when it ranks lower (the unit can lose WiFi after joining it). Ignored once the phone
+     * has answered or over a USB step; see [ConnectionStagePolicy.mayShowDiagnostic].
+     */
+    fun showDiagnostic(stage: ConnectionStage) {
+        _stage.update { current -> if (ConnectionStagePolicy.mayShowDiagnostic(current)) stage else current }
+    }
+
     /** A step that ended with nothing to show: [from] gives way to [to], and any other stage stays. */
     fun retreat(from: ConnectionStage, to: ConnectionStage) {
         if (ConnectionStagePolicy.shouldRetreat(_stage.value, from)) _stage.value = to

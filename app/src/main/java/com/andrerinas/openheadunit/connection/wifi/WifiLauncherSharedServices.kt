@@ -230,6 +230,7 @@ class WifiLauncherSharedServices(val service: AapService) {
                             5277 -> {
                                 // Headunit Server detected — reuse the pre-opened socket when possible
                                 AppLog.i("Auto-connecting to Headunit Server at $ip:$port (reusing socket)")
+                                service.huAutoConnect.onPhoneFound(ip)
                                 ConnectionStageTracker.report(ConnectionStage.PHONE_ANSWERED)
                                 service.serviceScope.launch {
                                     val endpoint = SameEndpointConnectPolicy.endpoint(ip, 5277)
@@ -258,6 +259,9 @@ class WifiLauncherSharedServices(val service: AapService) {
                     // The flag comes from the scan that finished, not from the call that built this
                     // listener: the instance outlives any single request now, so capturing it here would
                     // pin every later scan to the first caller's choice.
+                    override fun onGatewayRefused(ip: String): Boolean =
+                        service.huAutoConnect.onGatewayRefused(ip)
+
                     override fun onScanFinished(wasOneShot: Boolean) {
                         scanningState.value = false
                         if (wasOneShot) {
@@ -275,10 +279,15 @@ class WifiLauncherSharedServices(val service: AapService) {
                         // done safely. The kick must never cancel a live probe to get there: two sweeps
                         // probing the head unit server at once is what wedges it, so the kick only makes
                         // the *next* sweep immediate, on the network that has actually arrived.
+                        val fastMs = service.huAutoConnect.nextFastRescanDelayMs()
                         val delayMs = if (service.rescanWithoutWaiting) {
                             service.rescanWithoutWaiting = false
                             AppLog.i("AapService: network changed during the last scan; rescanning immediately")
                             0L
+                        } else if (fastMs != null) {
+                            // Just joined the phone's WiFi, or a session just dropped: the head unit
+                            // server answers within seconds, so do not wait out the loop's 10 s.
+                            fastMs
                         } else {
                             UnresponsivePeerPolicy.rescanDelayMs(commManager.silentPeerFailures)
                         }

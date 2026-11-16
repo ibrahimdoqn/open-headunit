@@ -20,6 +20,25 @@ object ConnectionStagePolicy {
     fun shouldRetreat(current: ConnectionStage?, from: ConnectionStage): Boolean = current == from
 
     /**
+     * Steps Headunit Server's automatic connection may replace with what it knows now, in either
+     * direction: WiFi waits, the join, a closed server. Never a USB step or anything from the
+     * phone answering on: those belong to a bring-up that got further than this can see.
+     */
+    private val diagnosticReplaceable = setOf(
+        ConnectionStage.ARMED,
+        ConnectionStage.WAITING_FOR_WIFI,
+        ConnectionStage.PHONE_WIFI_NOT_VISIBLE,
+        ConnectionStage.OTHER_WIFI,
+        ConnectionStage.PREPARING_NETWORK,
+        ConnectionStage.SEARCHING,
+        ConnectionStage.SERVER_CLOSED,
+        ConnectionStage.WIFI_JOINED,
+        ConnectionStage.WAITING_FOR_PHONE,
+    )
+
+    fun mayShowDiagnostic(current: ConnectionStage?): Boolean = current == null || current in diagnosticReplaceable
+
+    /**
      * Where the display goes when the unit gives up on its own network (#1147). After a refused
      * group the pill used to keep "Creating the WiFi network" under "Android Auto is starting…"
      * for as long as the app stayed open. It falls back to waiting for the phone, and the

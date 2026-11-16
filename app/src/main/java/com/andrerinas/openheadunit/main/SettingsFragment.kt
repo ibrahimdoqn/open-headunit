@@ -102,6 +102,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeStrategy
 import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
+import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnectPolicy
 import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
 import com.andrerinas.openheadunit.connection.wifi.WirelessRearmPolicy
 import java.io.File
@@ -230,6 +231,8 @@ class SettingsFragment : Fragment() {
     private var pendingWaitForWifiTimeout by pending::waitForWifiTimeout
     private var pendingJoinWifiBeforeServerSearch by pending::joinWifiBeforeServerSearch
     private var pendingJoinWifiTimeout by pending::joinWifiTimeout
+    private var pendingHuAutoConnect by pending::headunitServerAutoConnect
+    private var pendingHuStartDelaySec by pending::headunitServerStartDelaySec
     private var pendingBluetoothManagerServiceName by pending::bluetoothManagerServiceName
     private var pendingNativeAaIgnoreExternalBt by pending::nativeAaIgnoreExternalBt
     private var pendingExternalBtZbtTransport by pending::externalBtZbtTransport
@@ -724,6 +727,8 @@ class SettingsFragment : Fragment() {
         pendingWaitForWifiTimeout?.let { if (it != settings.waitForWifiTimeout) settings.waitForWifiTimeout = it }
         pendingJoinWifiBeforeServerSearch?.let { if (it != settings.joinWifiBeforeServerSearch) settings.joinWifiBeforeServerSearch = it }
         pendingJoinWifiTimeout?.let { if (it != settings.joinWifiTimeout) settings.joinWifiTimeout = it }
+        pendingHuAutoConnect?.let { if (it != settings.headunitServerAutoConnect) settings.headunitServerAutoConnect = it }
+        pendingHuStartDelaySec?.let { if (it != settings.headunitServerStartDelaySec) settings.headunitServerStartDelaySec = it }
         pendingBluetoothManagerServiceName?.let { if (it != settings.bluetoothManagerServiceName) settings.bluetoothManagerServiceName = it }
         pendingNativeAaIgnoreExternalBt?.let { if (it != settings.nativeAaIgnoreExternalBt) settings.nativeAaIgnoreExternalBt = it }
         pendingExternalBtZbtTransport?.let { if (it != settings.externalBtZbtTransport) settings.externalBtZbtTransport = it }
@@ -4804,8 +4809,68 @@ class SettingsFragment : Fragment() {
         ))
     }
 
-    /** Only Auto reads it: the WiFi button's one sweep is the only search that waits. */
+    /**
+     * Headunit Server's automatic connection, Auto only: whether the service searches by itself,
+     * the startup countdown, the WiFi wait and the phone's learned network, in one group.
+     */
     private fun addJoinWifiBeforeServerSearch(items: MutableList<SettingItem>) {
+        items.add(SettingItem.SubHeader("huAutoConnectHeader", R.string.hu_auto_connect_header))
+        val autoConnect = pendingHuAutoConnect ?: settings.headunitServerAutoConnect
+        items.add(SettingItem.ToggleSettingEntry(
+            stableId = "huAutoConnect",
+            nameResId = R.string.hu_auto_connect,
+            descriptionResId = R.string.hu_auto_connect_summary,
+            helpResId = R.string.hu_auto_connect_help,
+            isChecked = autoConnect,
+            onCheckedChanged = { isChecked ->
+                pendingHuAutoConnect = isChecked
+                checkChanges()
+                updateSettingsList()
+            }
+        ))
+        if (autoConnect) {
+            val delaySec = pendingHuStartDelaySec ?: settings.headunitServerStartDelaySec
+            items.add(SettingItem.SliderSettingEntry(
+                stableId = "huStartDelay",
+                nameResId = R.string.hu_start_delay,
+                helpResId = R.string.hu_start_delay_help,
+                value = if (delaySec == 0) getString(R.string.auto_connect_delay_none)
+                    else getString(R.string.auto_connect_delay_seconds_format, delaySec),
+                sliderValue = delaySec.toFloat(),
+                valueFrom = HeadunitServerAutoConnectPolicy.MIN_START_DELAY_SEC.toFloat(),
+                valueTo = HeadunitServerAutoConnectPolicy.MAX_START_DELAY_SEC.toFloat(),
+                stepSize = HeadunitServerAutoConnectPolicy.START_DELAY_STEP_SEC.toFloat(),
+                onValueChanged = { value ->
+                    pendingHuStartDelaySec = value.toInt()
+                    checkChanges()
+                    updateSettingsList()
+                }
+            ))
+        }
+        addJoinWifiRows(items)
+        val phoneSsid = settings.headunitServerPhoneSsid
+        items.add(SettingItem.SettingEntry(
+            stableId = "huPhoneNetwork",
+            nameResId = R.string.hu_phone_network,
+            value = phoneSsid.ifBlank { getString(R.string.hu_phone_network_unknown) },
+            helpResId = R.string.hu_phone_network_help,
+            onClick = {
+                if (settings.headunitServerPhoneSsid.isBlank() && settings.headunitServerPhoneIp.isBlank()) return@SettingEntry
+                MaterialAlertDialogBuilder(requireContext(), R.style.DarkAlertDialog)
+                    .setTitle(R.string.hu_phone_network_forget_title)
+                    .setMessage(getString(R.string.hu_phone_network_forget_message, settings.headunitServerPhoneSsid))
+                    .setPositiveButton(R.string.hu_phone_network_forget) { _, _ ->
+                        settings.forgetHeadunitServerPhoneNetwork()
+                        updateSettingsList()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
+        ))
+    }
+
+    /** The WiFi wait: the background search and the WiFi button both use it. */
+    private fun addJoinWifiRows(items: MutableList<SettingItem>) {
         val enabled = pendingJoinWifiBeforeServerSearch ?: settings.joinWifiBeforeServerSearch
         items.add(SettingItem.ToggleSettingEntry(
             stableId = "joinWifiBeforeServerSearch",

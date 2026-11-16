@@ -127,6 +127,7 @@ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherStopSequence
 import com.andrerinas.openheadunit.connection.wifi.WifiJoinKickPolicy
 import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
 import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaiter
+import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnect
 import com.andrerinas.openheadunit.connection.wifi.direct.P2pIdentityRotationPolicy
 import com.andrerinas.openheadunit.connection.wifi.direct.StationScanMonitor
 import com.andrerinas.openheadunit.connection.wifi.direct.StationStandDown
@@ -182,6 +183,22 @@ class AapService : Service() {
     }
 
     private val wifiLauncherManager = WifiLauncherManager(this)
+    /**
+     * Headunit Server's automatic connection: the startup countdown, what the card says while
+     * the search waits, quick retries and the connection timeline. Built on first use, like the
+     * waiter below; stop paths read [huAutoConnectIfBuilt].
+     */
+    private var huAutoConnectIfBuilt: HeadunitServerAutoConnect? = null
+    val huAutoConnect: HeadunitServerAutoConnect
+        get() = huAutoConnectIfBuilt ?: HeadunitServerAutoConnect(
+            context = this,
+            scope = serviceScope,
+            arm = { initWifiModeWithOptionalWait() },
+            disarm = { wifiLauncherManager.stop() },
+            userExited = { userExitedAA },
+            cancelledByUser = { wifiLauncherManager.cancelledByUser },
+        ).also { huAutoConnectIfBuilt = it }
+
     /** Built on first use; stop paths read [wifiJoinWaiterIfBuilt] so they never create one. */
     private var wifiJoinWaiterIfBuilt: WifiJoinWaiter? = null
     private val wifiJoinWaiter: WifiJoinWaiter
@@ -1308,7 +1325,8 @@ class AapService : Service() {
 
         if (applyBootLoopGuard()) {
             AppLog.w("AapService: Wireless bring-up paused by the boot-loop guard. USB and the rest of the app are unaffected.")
-        } else {
+        } else if (!huAutoConnect.onServiceStart()) {
+            // Headunit Server's countdown, or automatic connection off, takes the first search over.
             initWifiModeWithOptionalWait()
         }
         scheduleBootLoopStrikeClear()
@@ -2830,12 +2848,16 @@ class AapService : Service() {
      */
     fun parkDiscoveryUntilWifi(): Boolean {
         val settings = App.provide(this).settings
+        val onWifi = wifiJoinWaiter.isWifiConnected()
         val park = WifiJoinWaitPolicy.shouldParkDiscovery(
             isHeadunitServerAuto = settings.wifiConnectionMode == WifiLauncherMode.AUTO,
             enabled = settings.joinWifiBeforeServerSearch,
-            wifiConnected = wifiJoinWaiter.isWifiConnected()
+            wifiConnected = onWifi
         )
-        if (!park) return false
+        if (!park) {
+            if (onWifi) huAutoConnect.onArmedOnWifi()
+            return false
+        }
         if (!discoveryParkedForWifi) {
             AppLog.i("AapService: not on WiFi; the Headunit Server search waits for a WiFi network")
             discoveryParkedForWifi = true
@@ -2845,6 +2867,7 @@ class AapService : Service() {
             AppLog.d("AapService: WiFi is off; scans resume once it is switched on")
         }
         wifiJoinWaiter.start("background search", ::onWifiJoinedForSearch)
+        huAutoConnect.onParkedForWifi()
         return true
     }
 
@@ -2909,6 +2932,7 @@ class AapService : Service() {
         }
         AppLog.i("AapService: joined WiFi; searching for the Headunit Server (loop=$resumeLoop, button=$oneShot)")
         ConnectionStageTracker.report(ConnectionStage.SEARCHING)
+        huAutoConnect.onWifiJoined()
         // The loop's own first sweep is the button's sweep too: one probe of the server at a time.
         when {
             resumeLoop -> wifiLauncherManager.startDiscovery(oneShot = false)
@@ -2923,6 +2947,7 @@ class AapService : Service() {
         oneShotAwaitingWifi = false
         discoveryParkedForWifi = false
         wifiJoinWaiterIfBuilt?.stop()
+        huAutoConnectIfBuilt?.stopVisibilityChecks()
     }
 
     private fun cancelAllBtAutoDisconnects() {
@@ -3091,6 +3116,11 @@ class AapService : Service() {
 
     private fun initWifiModeWithOptionalWait() {
         if (deferWirelessForUsbHandoff()) return
+        // Headunit Server with automatic connection off: only the WiFi button brings it up.
+        if (!huAutoConnect.armsByItself()) {
+            AppLog.i("AapService: Headunit Server automatic connection is off; not arming wireless by itself")
+            return
+        }
 
         val settings = App.provide(this).settings
 
@@ -3329,6 +3359,7 @@ class AapService : Service() {
 
         if (pause) {
             wirelessPausedForSettings = true
+            huAutoConnect.onSettingsOpened()
             releaseParkedHct()
             // A recreate or a permission prompt can have scheduled one; it must not fire now.
             settingsRearmJob?.cancel()
@@ -3343,6 +3374,9 @@ class AapService : Service() {
         wirelessPausedForSettings = false
         val mode = App.provide(this).settings.wifiConnectionMode
         if (mode == WifiLauncherMode.MANUAL) return
+        // Headunit Server's automatic connection starts its countdown again rather than staying
+        // down until the WiFi button, unless a held request (a Save, the QR) re-arms below anyway.
+        if (!settingsQrHold && !wirelessRearmPendingForSettings && huAutoConnect.onSettingsClosed()) return
 
         if (!SettingsScreenPausePolicy.rearmsOnRelease(settingsQrHold, wirelessRearmPendingForSettings)) {
             AppLog.i(
@@ -3594,6 +3628,7 @@ class AapService : Service() {
     @SuppressLint("WrongConstant")
     override fun onDestroy() {
         cancelWifiJoinWaits()
+        huAutoConnectIfBuilt?.destroy()
         closeRetainedHct()
         AppLog.i("AapService destroying... (wakeLock held=${bootWakeLock?.isHeld == true})")
         FloatingButtonManager.removeOverlay(this)
@@ -3935,6 +3970,7 @@ class AapService : Service() {
                     ToastUtils.showToast(this, getString(R.string.join_wifi_still_waiting))
                     return START_STICKY
                 }
+                if (mode == WifiLauncherMode.AUTO) huAutoConnect.onWifiButton()
 
                 // [FIX] Reset exit flags on manual scan start
                 userExitedAA = false
@@ -3946,6 +3982,12 @@ class AapService : Service() {
 
                 if (mode == WifiLauncherMode.AUTO)
                     searchHeadunitServerOnceOnWifi(settings)
+            }
+            ACTION_HU_AUTO_CONNECT       -> {
+                when (intent?.getStringExtra(EXTRA_HU_AUTO_CONNECT)) {
+                    HU_AUTO_CONNECT_NOW -> huAutoConnect.connectNow()
+                    HU_AUTO_CONNECT_CANCEL -> huAutoConnect.cancelByUser()
+                }
             }
             ACTION_STOP_WIRELESS         -> {
                 stopWirelessForCommand(intent?.getBooleanExtra(EXTRA_SETTINGS_REARM, false) == true)
@@ -4674,6 +4716,11 @@ class AapService : Service() {
         const val ACTION_START_WIRELESS_SCAN       = "com.andrerinas.openheadunit.ACTION_START_WIRELESS_SCAN"
         const val ACTION_STOP_WIRELESS             = "com.andrerinas.openheadunit.ACTION_STOP_WIRELESS"
         const val ACTION_CANCEL_WIRELESS           = "com.andrerinas.openheadunit.ACTION_CANCEL_WIRELESS"
+        /** The home card's buttons during Headunit Server's startup countdown. */
+        const val ACTION_HU_AUTO_CONNECT           = "com.andrerinas.openheadunit.ACTION_HU_AUTO_CONNECT"
+        const val EXTRA_HU_AUTO_CONNECT            = "hu_auto_connect"
+        const val HU_AUTO_CONNECT_NOW              = "now"
+        const val HU_AUTO_CONNECT_CANCEL           = "cancel"
         const val ACTION_ROTATE_WIFI_DIRECT_IDENTITY = "com.andrerinas.openheadunit.ACTION_ROTATE_WIFI_DIRECT_IDENTITY"
         const val ACTION_NATIVE_AA_POKE            = "com.andrerinas.openheadunit.ACTION_NATIVE_AA_POKE"
         const val ACTION_NATIVE_AA_SWITCH_DEVICE   = "com.andrerinas.openheadunit.ACTION_NATIVE_AA_SWITCH_DEVICE"

@@ -1,5 +1,6 @@
 package com.andrerinas.openheadunit.connection.wifi
 
+import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnectPolicy
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
@@ -95,7 +96,20 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
          * running scan has to report its own kind or it would silently lose its re-arm.
          */
         fun onScanFinished(wasOneShot: Boolean)
+
+        /**
+         * The network's gateway refused port 5277: something is there and nothing listens. From
+         * the scan's thread. Return true to skip the subnet sweep, which only the listener can
+         * judge (on the phone's own hotspot the gateway is the phone).
+         */
+        fun onGatewayRefused(ip: String): Boolean = false
     }
+
+    /** Addresses that refused port 5277 in the running scan. */
+    private val refused5277: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** Set by the gateway phase when the listener says the subnet sweep has nothing to add. */
+    @Volatile private var skipSubnetSweep = false
 
     /**
      * One scan, with the disposition that belongs to it. Kept together rather than in an instance
@@ -195,6 +209,8 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
             // Cleared here rather than at the call, so the set belongs to this generation and
             // the outgoing scan keeps its own dedupe while it winds down.
             reportedIps.clear()
+            refused5277.clear()
+            skipSubnetSweep = false
             probeHelperPort = readProbeHelperPort()
             try {
                 // 1. Quick Scan: Check likely Gateways first
@@ -203,6 +219,10 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
 
                 if (gatewayFound) {
                     AppLog.i("NetworkDiscovery: Gateway found service, skipping subnet scan.")
+                    return@launch
+                }
+                if (skipSubnetSweep) {
+                    AppLog.i("NetworkDiscovery: the gateway is the phone and refused 5277; skipping the subnet scan")
                     return@launch
                 }
 
@@ -253,7 +273,8 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
             // First, and on every API level. The route lookup below needs API 23, and on a phone
             // hotspot this is the phone itself. mutableSetOf keeps insertion order, so it is
             // probed first and the 254-address sweep is reached less often.
-            dhcpGatewaySuspect()?.let { suspects.add(it) }
+            val dhcpGateway = dhcpGatewaySuspect()
+            dhcpGateway?.let { suspects.add(it) }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -284,6 +305,11 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
                         responded++
                     }
                 }
+            }
+            // Refused rather than unanswered: the phone is there on its hotspot and Android Auto's
+            // head unit server is not running. Said once per sweep, for the DHCP gateway only.
+            if (!foundAny && dhcpGateway != null && dhcpGateway in refused5277) {
+                skipSubnetSweep = listener.onGatewayRefused(dhcpGateway)
             }
         } catch (e: CancellationException) {
             // Not an error, and swallowing it hid the socket leak below: the scan reported
@@ -447,6 +473,9 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
             if (port == 5289) {
                 probesFailed.incrementAndGet()
                 lastProbeFailure = e.javaClass.simpleName
+            }
+            if (port == 5277 && HeadunitServerAutoConnectPolicy.isRefused(e.javaClass.simpleName, e.message)) {
+                refused5277.add(ip)
             }
             null
         }

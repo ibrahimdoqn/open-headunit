@@ -75,6 +75,11 @@ object HomePrimaryPolicy {
         ConnectionStage.SEARCHING,
         // Any USB device reports it, a flash drive included, so it is no promise of a phone.
         ConnectionStage.USB_ATTACHED,
+        // Headunit Server waiting for the phone's WiFi, or for its server: as long as the phone is away.
+        ConnectionStage.WAITING_FOR_WIFI,
+        ConnectionStage.PHONE_WIFI_NOT_VISIBLE,
+        ConnectionStage.OTHER_WIFI,
+        ConnectionStage.SERVER_CLOSED,
     )
 
     private val usbStages = setOf(ConnectionStage.USB_ATTACHED, ConnectionStage.USB_SWITCHING)
