@@ -1,6 +1,6 @@
-From 38db1195fba9a928ede82271e7e4e3c5eec253a5 Mon Sep 17 00:00:00 2001
+From 1371a9e59524cd7931bc8185d264b0d45db69a17 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Mon, 16 Nov 2026 23:27:30 +0000
+Date: Mon, 16 Nov 2026 23:33:21 +0000
 Subject: [PATCH] Headunit Server: join WiFi before the WiFi button's search
 
 The WiFi button's one-shot search probes this unit's own subnet. A unit
@@ -36,8 +36,8 @@ Automatic connection (Headunit Server, Auto; on by default):
   not in range, another network, "WiFi connected, connecting to the
   phone", or the phone's head unit server being off (port 5277 refused
   rather than unanswered);
-- quick retries (1-3 s) after a join or a dropped session instead of
-  the loop's 10 s, still one sweep at a time;
+- the first sweep the moment WiFi is joined (0.5 s), then every 5 s
+  for a minute instead of the loop's 10 s, still one sweep at a time;
 - the phone's network and address learned from the last session; a
   refusing gateway that is the known phone skips the subnet sweep;
 - the home screen's "last session" auto-connect no longer dials the
@@ -55,11 +55,11 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
  .../connection/ConnectionStagePolicy.kt       |  19 +
  .../connection/ConnectionStageTracker.kt      |   9 +
  .../connection/wifi/NetworkDiscovery.kt       |  31 +-
- .../connection/wifi/WifiJoinWaitPolicy.kt     |  55 +++
+ .../connection/wifi/WifiJoinWaitPolicy.kt     |  58 +++
  .../connection/wifi/WifiJoinWaiter.kt         | 193 ++++++++
  .../wifi/WifiLauncherSharedServices.kt        |  18 +
- .../autoconnect/HeadunitServerAutoConnect.kt  | 415 ++++++++++++++++++
- .../HeadunitServerAutoConnectPolicy.kt        | 126 ++++++
+ .../autoconnect/HeadunitServerAutoConnect.kt  | 421 ++++++++++++++++++
+ .../HeadunitServerAutoConnectPolicy.kt        | 128 ++++++
  .../openheadunit/main/HomeFragment.kt         |  56 ++-
  .../openheadunit/main/HomePrimaryPolicy.kt    |   5 +
  .../openheadunit/main/SettingsFragment.kt     | 105 +++++
@@ -94,9 +94,9 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
  app/src/main/res/values-zh-rTW/strings.xml    |  13 +
  app/src/main/res/values/strings.xml           |  27 ++
  .../connection/wifi/WifiJoinWaitPolicyTest.kt |  62 +++
- .../HeadunitServerAutoConnectPolicyTest.kt    | 105 +++++
+ .../HeadunitServerAutoConnectPolicyTest.kt    | 106 +++++
  .../autoconnect/HeadunitServerStagesTest.kt   |  89 ++++
- 48 files changed, 1896 insertions(+), 10 deletions(-)
+ 48 files changed, 1908 insertions(+), 10 deletions(-)
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
@@ -106,7 +106,7 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
  create mode 100644 app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerStagesTest.kt
 
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 097aa07d..2b280b5a 100644
+index 097aa07d..2d53c4e4 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
 @@ -5,6 +5,8 @@
@@ -114,7 +114,7 @@ index 097aa07d..2b280b5a 100644
  - Feat: Send volume buttons to the phone, and add speed-dependent volume, thanks to @Megalodon-sharky
  - Feat(usb): add wireless dongle display option for home screen
 +- Headunit Server: while the unit is not on WiFi, scan for WiFi instead of searching, and search the moment it joins, at startup and from the WiFi button
-+- Headunit Server: automatic connection with a start delay (countdown on the home card, paused while settings are open), quick retries after a join, "WiFi connected, connecting to the phone", a closed head unit server told apart from an absent phone, the phone's network learned, and one timeline line per connection in the log
++- Headunit Server: automatic connection with a start delay (countdown on the home card, paused while settings are open), an immediate search after a join with retries every 5 s, "WiFi connected, connecting to the phone", a closed head unit server told apart from an absent phone, the phone's network learned, and one timeline line per connection in the log
  
  ### 4.0.0
  - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar
@@ -557,10 +557,10 @@ index a9f33c53..3fcc2d01 100644
      }
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
 new file mode 100644
-index 00000000..3e312463
+index 00000000..533cef61
 --- /dev/null
 +++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,58 @@
 +package com.andrerinas.openheadunit.connection.wifi
 +
 +/**
@@ -579,8 +579,11 @@ index 00000000..3e312463
 +    const val MAX_TIMEOUT_SEC = 120
 +    const val DEFAULT_TIMEOUT_SEC = 30
 +
-+    /** After the join, before the probe: the hotspot's DHCP lease and routes take a moment. */
-+    const val SETTLE_DELAY_MS = 1_500L
++    /**
++     * After the join, before the probe. Android reports a WiFi network available once it has its
++     * address, so this only lets the routes land: the search starts as good as immediately.
++     */
++    const val SETTLE_DELAY_MS = 500L
 +
 +    /**
 +     * From Android 9 a foreground app gets four scans in any two minutes, and the platform refuses
@@ -878,10 +881,10 @@ index 8cae2f2f..57bfc15a 100644
  
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
 new file mode 100644
-index 00000000..61c30e89
+index 00000000..5e5fce96
 --- /dev/null
 +++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
-@@ -0,0 +1,415 @@
+@@ -0,0 +1,421 @@
 +package com.andrerinas.openheadunit.connection.wifi.autoconnect
 +
 +import android.annotation.SuppressLint
@@ -1135,11 +1138,16 @@ index 00000000..61c30e89
 +    }
 +
 +    /**
-+     * Asked by the discovery loop for the gap before its next sweep: a quick one while the retries
++     * Asked by the discovery loop for the gap before its next sweep: 5 s while the quick retries
 +     * last, else null for the loop's own. When they run out the card goes back to searching.
 +     */
 +    fun nextFastRescanDelayMs(): Long? {
 +        if (fastRescanIndex < 0) return null
++        // Wireless Helper's sweeps share this loop; a mode changed mid-retries keeps its own pace.
++        if (!isAuto) {
++            fastRescanIndex = -1
++            return null
++        }
 +        val delayMs = HeadunitServerAutoConnectPolicy.fastRescanDelayMs(fastRescanIndex)
 +        if (delayMs == null) {
 +            fastRescanIndex = -1
@@ -1156,7 +1164,8 @@ index 00000000..61c30e89
 +     * of the subnet, which only holds when the gateway is the phone learned from the last session.
 +     */
 +    fun onGatewayRefused(ip: String): Boolean {
-+        val skip = HeadunitServerAutoConnectPolicy.skipsSubnetSweep(ip, settings.headunitServerPhoneIp)
++        // Wireless Helper's hotspot strategies sweep with the same discovery; only Auto may skip.
++        val skip = HeadunitServerAutoConnectPolicy.skipsSubnetSweep(isAuto, ip, settings.headunitServerPhoneIp)
 +        scope.launch {
 +            if (!isAuto || sessionLive) return@launch
 +            ConnectionStageTracker.showDiagnostic(ConnectionStage.SERVER_CLOSED)
@@ -1299,10 +1308,10 @@ index 00000000..61c30e89
 +}
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicy.kt
 new file mode 100644
-index 00000000..e82cab8b
+index 00000000..5fb837b7
 --- /dev/null
 +++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicy.kt
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,128 @@
 +package com.andrerinas.openheadunit.connection.wifi.autoconnect
 +
 +/**
@@ -1325,12 +1334,13 @@ index 00000000..e82cab8b
 +    const val VISIBILITY_CHECK_INTERVAL_MS = 10_000L
 +
 +    /**
-+     * Gaps before the sweeps that follow a WiFi join or a dropped session, instead of the loop's
-+     * usual 10 s. Android Auto's head unit server can take a moment to answer once the phone's
-+     * hotspot has a client, and a 10 s wait there is most of the delay a driver sees. Short and
-+     * few: each sweep still runs one at a time, so the server is never probed twice at once.
++     * After a WiFi join or a dropped session the first sweep runs at once; if it does not connect,
++     * the next ones come every 5 s instead of the loop's usual 10 s, for a minute, and then the
++     * loop's own pace (with its back-off for a phone that never answers) takes over. Each sweep
++     * still runs one at a time, so the head unit server is never probed twice at once.
 +     */
-+    private val FAST_RESCAN_DELAYS_MS = longArrayOf(1_000L, 1_000L, 2_000L, 2_000L, 3_000L)
++    const val FAST_RESCAN_INTERVAL_MS = 5_000L
++    const val FAST_RESCAN_COUNT = 12
 +
 +    fun clampStartDelaySec(seconds: Int): Int = seconds.coerceIn(MIN_START_DELAY_SEC, MAX_START_DELAY_SEC)
 +
@@ -1361,9 +1371,10 @@ index 00000000..e82cab8b
 +    ): Boolean = isHeadunitServerAuto && autoConnect && !cancelledByUser && !userExited && !sessionLive
 +
 +    /** The gap before quick retry [index] (from zero), or null once the quick retries are spent. */
-+    fun fastRescanDelayMs(index: Int): Long? = FAST_RESCAN_DELAYS_MS.getOrNull(index)
++    fun fastRescanDelayMs(index: Int): Long? =
++        if (index in 0 until FAST_RESCAN_COUNT) FAST_RESCAN_INTERVAL_MS else null
 +
-+    val fastRescanCount: Int get() = FAST_RESCAN_DELAYS_MS.size
++    val fastRescanCount: Int get() = FAST_RESCAN_COUNT
 +
 +    /**
 +     * An SSID as WifiInfo or a scan result gives it, without the quotes, or null when Android
@@ -1415,8 +1426,8 @@ index 00000000..e82cab8b
 +     * is the phone itself, which is learned from the last session: on a shared network the
 +     * gateway is a router, and refusing says nothing about where the phone is.
 +     */
-+    fun skipsSubnetSweep(refusedGatewayIp: String?, knownPhoneIp: String?): Boolean =
-+        !refusedGatewayIp.isNullOrBlank() && refusedGatewayIp == knownPhoneIp
++    fun skipsSubnetSweep(isHeadunitServerAuto: Boolean, refusedGatewayIp: String?, knownPhoneIp: String?): Boolean =
++        isHeadunitServerAuto && !refusedGatewayIp.isNullOrBlank() && refusedGatewayIp == knownPhoneIp
 +
 +    /** One timeline step: a label and the seconds it took, or null for a step that was skipped. */
 +    data class Step(val label: String, val ms: Long?)
@@ -2517,10 +2528,10 @@ index 00000000..9daa58c6
 +}
 diff --git a/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicyTest.kt b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicyTest.kt
 new file mode 100644
-index 00000000..552ca27f
+index 00000000..5b98a30a
 --- /dev/null
 +++ b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicyTest.kt
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,106 @@
 +package com.andrerinas.openheadunit.connection.wifi.autoconnect
 +
 +import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnectPolicy as P
@@ -2568,11 +2579,11 @@ index 00000000..552ca27f
 +    }
 +
 +    @Test
-+    fun `quick retries are short, few, and then hand back to the loop`() {
-+        val gaps = (0 until P.fastRescanCount).map { P.fastRescanDelayMs(it)!! }
-+        assertTrue(gaps.all { it in 1L..3_000L })
-+        assertTrue("the quick retries take ${gaps.sum()} ms", gaps.sum() <= 10_000L)
++    fun `after a join the retries come every 5 s for a minute, then the loop's own pace`() {
++        (0 until P.fastRescanCount).forEach { assertEquals(5_000L, P.fastRescanDelayMs(it)) }
++        assertEquals(60_000L, (0 until P.fastRescanCount).sumOf { P.fastRescanDelayMs(it)!! })
 +        assertNull(P.fastRescanDelayMs(P.fastRescanCount))
++        assertNull(P.fastRescanDelayMs(-1))
 +    }
 +
 +    @Test
@@ -2610,10 +2621,11 @@ index 00000000..552ca27f
 +
 +    @Test
 +    fun `the subnet sweep is skipped only when the refusing gateway is the known phone`() {
-+        assertTrue(P.skipsSubnetSweep("192.168.43.1", "192.168.43.1"))
-+        assertFalse(P.skipsSubnetSweep("192.168.1.1", "192.168.43.1"))
-+        assertFalse("nothing learned yet", P.skipsSubnetSweep("192.168.43.1", ""))
-+        assertFalse(P.skipsSubnetSweep(null, "192.168.43.1"))
++        assertTrue(P.skipsSubnetSweep(true, "192.168.43.1", "192.168.43.1"))
++        assertFalse(P.skipsSubnetSweep(true, "192.168.1.1", "192.168.43.1"))
++        assertFalse("nothing learned yet", P.skipsSubnetSweep(true, "192.168.43.1", ""))
++        assertFalse(P.skipsSubnetSweep(true, null, "192.168.43.1"))
++        assertFalse("Wireless Helper sweeps too, and never skips", P.skipsSubnetSweep(false, "192.168.43.1", "192.168.43.1"))
 +    }
 +
 +    @Test
