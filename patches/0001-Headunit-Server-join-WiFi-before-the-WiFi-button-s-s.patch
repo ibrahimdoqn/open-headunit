@@ -1,0 +1,1166 @@
+From d7c542018f6bca56118191af8c73b12d0194d2fe Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 16 Nov 2026 14:48:14 +0000
+Subject: [PATCH] Headunit Server: join WiFi before the WiFi button's search
+
+The WiFi button's one-shot search probes this unit's own subnet. A unit
+that has not joined the phone's hotspot yet has no subnet to probe, so
+the search ended at once and the user had to press again. Android 10
+units are the slow case: the platform's reconnect scans back off while
+nothing is connected, so a saved hotspot can sit in range for a minute.
+
+With "Join WiFi before searching" on (Wireless Connection, Headunit
+Server, Auto; on by default), the button:
+- searches at once, as before, when the unit is already on WiFi;
+- otherwise asks Android to scan for WiFi, paced to the foreground
+  budget of four scans in two minutes (WifiJoinWaitPolicy), and waits
+  for a WiFi network, up to the "WiFi join timeout" (10-120 s, 30 s);
+- shows the wait on the home card as "Preparing the network", and uses
+  the pill rather than the overlay, whose 30 s bound could end mid-wait;
+- switches WiFi on below Android 10, or opens the WiFi panel above it;
+- searches once the join settles, or once anyway on timeout.
+
+A second press while waiting keeps the wait; the status pill's X ends it.
+Both settings are carried in the settings backup.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ CHANGELOG.md                                  |   1 +
+ README.md                                     |   1 +
+ .../andrerinas/openheadunit/aap/AapService.kt |  53 ++++-
+ .../connection/wifi/WifiJoinWaitPolicy.kt     |  44 ++++
+ .../connection/wifi/WifiJoinWaiter.kt         | 196 ++++++++++++++++++
+ .../openheadunit/main/HomeFragment.kt         |  16 +-
+ .../openheadunit/main/SettingsFragment.kt     |  40 ++++
+ .../openheadunit/main/SettingsPendingCopy.kt  |   6 +
+ .../andrerinas/openheadunit/utils/Settings.kt |  11 +
+ .../utils/SettingsBackupManager.kt            |   2 +
+ app/src/main/res/values-ar/strings.xml        |   9 +
+ app/src/main/res/values-cs/strings.xml        |   9 +
+ app/src/main/res/values-de/strings.xml        |   9 +
+ app/src/main/res/values-es-rES/strings.xml    |   9 +
+ app/src/main/res/values-es/strings.xml        |   9 +
+ app/src/main/res/values-fr/strings.xml        |   9 +
+ app/src/main/res/values-hi/strings.xml        |   9 +
+ app/src/main/res/values-hu/strings.xml        |   9 +
+ app/src/main/res/values-in/strings.xml        |   9 +
+ app/src/main/res/values-it/strings.xml        |   9 +
+ app/src/main/res/values-ja/strings.xml        |   9 +
+ app/src/main/res/values-ka/strings.xml        |   9 +
+ app/src/main/res/values-ko/strings.xml        |   9 +
+ app/src/main/res/values-nl/strings.xml        |   9 +
+ app/src/main/res/values-pl/strings.xml        |   9 +
+ app/src/main/res/values-pt-rBR/strings.xml    |   9 +
+ app/src/main/res/values-pt-rPT/strings.xml    |   9 +
+ app/src/main/res/values-ro/strings.xml        |   9 +
+ app/src/main/res/values-ru/strings.xml        |   9 +
+ app/src/main/res/values-th/strings.xml        |   9 +
+ app/src/main/res/values-tr/strings.xml        |   9 +
+ app/src/main/res/values-uk/strings.xml        |   9 +
+ app/src/main/res/values-vi/strings.xml        |   9 +
+ app/src/main/res/values-zh-rCN/strings.xml    |   9 +
+ app/src/main/res/values-zh-rTW/strings.xml    |   9 +
+ app/src/main/res/values/strings.xml           |   9 +
+ .../connection/wifi/WifiJoinWaitPolicyTest.kt |  54 +++++
+ 37 files changed, 655 insertions(+), 3 deletions(-)
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicyTest.kt
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 097aa07d..7dd83493 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -5,6 +5,7 @@
+ - Allow embedding the projection activity, thanks to @codepdbh
+ - Feat: Send volume buttons to the phone, and add speed-dependent volume, thanks to @Megalodon-sharky
+ - Feat(usb): add wireless dongle display option for home screen
++- Headunit Server: the WiFi button joins WiFi first when the unit is not on a network yet, then searches
+ 
+ ### 4.0.0
+ - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar
+diff --git a/README.md b/README.md
+index 51a26590..2c548b53 100644
+--- a/README.md
++++ b/README.md
+@@ -63,6 +63,7 @@ Choose from the five options below depending on your Android Auto version and se
+   2. Scroll down and tap **Version** 10 times to unlock Developer settings.
+   3. Tap the three-dot menu in the top right corner and choose **Start headunit server**.
+   4. In Open Headunit, tap the **WiFi** button to connect (or use Self-Mode).
++- If the head unit has not joined the phone's hotspot yet, the **WiFi** button asks Android to scan, waits for the join (30 s by default) and then searches. Save the phone's hotspot in the head unit's WiFi settings first. Turn this off or change the wait under Settings -> **Wireless Connection** -> **Join WiFi before searching**.
+ 
+ #### 4. Wireless Helper
+ - Our companion app triggers the wireless connection automatically in the background.
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt b/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
+index 3af63e6c..3e6ef57d 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
+@@ -125,6 +125,8 @@ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherManager
+ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
+ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherStopSequence
+ import com.andrerinas.openheadunit.connection.wifi.WifiJoinKickPolicy
++import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
++import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaiter
+ import com.andrerinas.openheadunit.connection.wifi.direct.P2pIdentityRotationPolicy
+ import com.andrerinas.openheadunit.connection.wifi.direct.StationScanMonitor
+ import com.andrerinas.openheadunit.connection.wifi.direct.StationStandDown
+@@ -180,6 +182,7 @@ class AapService : Service() {
+     }
+ 
+     private val wifiLauncherManager = WifiLauncherManager(this)
++    private val wifiJoinWaiter by lazy { WifiJoinWaiter(this) }
+ 
+     /**
+      * Counts this unit's own WiFi scans into the log. Nothing acts on it; it exists so a reporter's
+@@ -2811,6 +2814,43 @@ class AapService : Service() {
+         }
+     }
+ 
++    /**
++     * The WiFi button's one sweep for the Headunit Server. The sweep probes this unit's own
++     * subnet, so on a unit that has not joined the phone's hotspot yet it found nothing and ended.
++     * With [Settings.joinWifiBeforeServerSearch] on, the sweep waits for the join instead, and the
++     * home card shows the wait as "Preparing the network". See [WifiJoinWaitPolicy].
++     */
++    private fun searchHeadunitServerOnceOnWifi(settings: Settings) {
++        if (!WifiJoinWaitPolicy.shouldWait(settings.joinWifiBeforeServerSearch, wifiJoinWaiter.isWifiConnected())) {
++            wifiLauncherManager.startDiscovery(oneShot = true)
++            return
++        }
++        ConnectionStageTracker.beginAttempt(ConnectionStage.PREPARING_NETWORK)
++        ToastUtils.showToast(this, getString(R.string.join_wifi_waiting))
++        val search = search@{ reason: String ->
++            if (isDestroying || commManager.isBusy) {
++                AppLog.i("AapService: WiFi wait ended ($reason), but a connection is already under way")
++                return@search
++            }
++            AppLog.i("AapService: WiFi wait ended ($reason); searching for the Headunit Server")
++            ConnectionStageTracker.report(ConnectionStage.SEARCHING)
++            wifiLauncherManager.startDiscovery(oneShot = true)
++        }
++        wifiJoinWaiter.start(
++            timeoutSec = settings.joinWifiTimeout,
++            onJoined = { search("joined") },
++            onTimeout = {
++                ToastUtils.showToast(this, getString(R.string.join_wifi_timed_out), android.widget.Toast.LENGTH_LONG, force = true)
++                // Still the one sweep the button has always made: the network may have come up
++                // in a way the callback did not report.
++                search("timeout")
++            },
++            onWifiOff = {
++                ToastUtils.showToast(this, getString(R.string.join_wifi_turn_on), android.widget.Toast.LENGTH_LONG, force = true)
++            }
++        )
++    }
++
+     private fun cancelAllBtAutoDisconnects() {
+         btAutoDisconnectJobs.values.forEach { it.cancel() }
+         btAutoDisconnectJobs.clear()
+@@ -3479,6 +3519,7 @@ class AapService : Service() {
+ 
+     @SuppressLint("WrongConstant")
+     override fun onDestroy() {
++        wifiJoinWaiter.stop()
+         closeRetainedHct()
+         AppLog.i("AapService destroying... (wakeLock held=${bootWakeLock?.isHeld == true})")
+         FloatingButtonManager.removeOverlay(this)
+@@ -3813,6 +3854,14 @@ class AapService : Service() {
+ 
+                 AppLog.i("AapService: Force-starting WIFI-Scan from UI")
+ 
++                // A second press while the WiFi join is pending: restarting the launcher now would
++                // only drop the step on screen and start the wait over.
++                if (mode == WifiLauncherMode.AUTO && wifiJoinWaiter.isWaiting) {
++                    AppLog.i("AapService: still waiting for WiFi; the press changes nothing")
++                    ToastUtils.showToast(this, getString(R.string.join_wifi_still_waiting))
++                    return START_STICKY
++                }
++
+                 // [FIX] Reset exit flags on manual scan start
+                 userExitedAA = false
+                 userExitCooldownUntil = 0L
+@@ -3822,12 +3871,14 @@ class AapService : Service() {
+                 )
+ 
+                 if (mode == WifiLauncherMode.AUTO)
+-                    wifiLauncherManager.startDiscovery(oneShot = true)
++                    searchHeadunitServerOnceOnWifi(settings)
+             }
+             ACTION_STOP_WIRELESS         -> {
++                wifiJoinWaiter.stop()
+                 stopWirelessForCommand(intent?.getBooleanExtra(EXTRA_SETTINGS_REARM, false) == true)
+             }
+             ACTION_CANCEL_WIRELESS       -> {
++                wifiJoinWaiter.stop()
+                 commManager.cancelPendingSettingsRestart()
+                 usbCheckPendingForSettings = false
+                 bluetoothLaunchPendingForSettings = false
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
+new file mode 100644
+index 00000000..7aa45cdc
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
+@@ -0,0 +1,44 @@
++package com.andrerinas.openheadunit.connection.wifi
++
++/**
++ * Whether the Headunit Server's WiFi button joins WiFi before it searches, and how it paces that.
++ *
++ * The one-shot search probes this unit's own subnet. A unit that has not joined the phone's
++ * hotspot yet has no subnet to probe, so the search ended at once and the user had to press again.
++ * Android 10 units are the slow case: the platform's own reconnect scans back off while the
++ * screen is on and nothing is connected, so a saved hotspot can sit in range for a minute.
++ *
++ * Pure, so every case is a unit test rather than a head unit.
++ */
++object WifiJoinWaitPolicy {
++
++    const val MIN_TIMEOUT_SEC = 10
++    const val MAX_TIMEOUT_SEC = 120
++    const val DEFAULT_TIMEOUT_SEC = 30
++
++    /** After the join, before the probe: the hotspot's DHCP lease and routes take a moment. */
++    const val SETTLE_DELAY_MS = 1_500L
++
++    /**
++     * From Android 9 a foreground app gets four scans in any two minutes, and the platform refuses
++     * the rest. The four come early, while a hotspot that is in range is found fastest; each later
++     * scan waits until the one four before it has left the window, so none is planned to fail.
++     */
++    private val OPENING_SCANS_MS = longArrayOf(0L, 10_000L, 25_000L, 45_000L)
++    const val SCAN_BUDGET_WINDOW_MS = 120_000L
++
++    fun clampTimeoutSec(seconds: Int): Int = seconds.coerceIn(MIN_TIMEOUT_SEC, MAX_TIMEOUT_SEC)
++
++    /** Only a unit that is not on WiFi yet waits; one that is searches at once, as before. */
++    fun shouldWait(enabled: Boolean, wifiConnected: Boolean): Boolean = enabled && !wifiConnected
++
++    /** Time from the start of the wait to scan number [index], counting from zero. */
++    fun scanAtMs(index: Int): Long {
++        require(index >= 0) { "index must not be negative" }
++        if (index < OPENING_SCANS_MS.size) return OPENING_SCANS_MS[index]
++        return scanAtMs(index - OPENING_SCANS_MS.size) + SCAN_BUDGET_WINDOW_MS
++    }
++
++    /** Wait between scan [index] and the scan after it. */
++    fun delayAfterScanMs(index: Int): Long = scanAtMs(index + 1) - scanAtMs(index)
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
+new file mode 100644
+index 00000000..298b4bbe
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
+@@ -0,0 +1,196 @@
++package com.andrerinas.openheadunit.connection.wifi
++
++import android.annotation.SuppressLint
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.content.IntentFilter
++import android.net.ConnectivityManager
++import android.net.Network
++import android.net.NetworkCapabilities
++import android.net.NetworkRequest
++import android.net.wifi.WifiManager
++import android.os.Build
++import android.os.Handler
++import android.os.Looper
++import android.os.SystemClock
++import android.provider.Settings as SystemSettings
++import androidx.core.content.ContextCompat
++import com.andrerinas.openheadunit.utils.AppLog
++
++/**
++ * Holds the Headunit Server's one-shot search until this unit has joined a WiFi network.
++ *
++ * While it waits it asks the platform for scans, which is what makes it join a saved network
++ * sooner; it does not pick a network itself. Pacing comes from [WifiJoinWaitPolicy].
++ *
++ * One wait at a time, on the main thread. Starting a new one replaces the old.
++ */
++class WifiJoinWaiter(context: Context) {
++
++    private val context = context.applicationContext
++    private val handler = Handler(Looper.getMainLooper())
++    private val wifi = this.context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
++    private val cm = this.context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
++
++    private var callback: ConnectivityManager.NetworkCallback? = null
++    private var receiver: BroadcastReceiver? = null
++    private var onJoined: (() -> Unit)? = null
++    private var onTimeout: (() -> Unit)? = null
++    private var scanIndex = 0
++    private var startedAtMs = 0L
++
++    val isWaiting: Boolean get() = onJoined != null
++
++    private val scanTick = object : Runnable {
++        override fun run() {
++            if (!isWaiting) return
++            requestScan()
++            handler.postDelayed(this, WifiJoinWaitPolicy.delayAfterScanMs(scanIndex++))
++        }
++    }
++
++    private val timeoutTick = Runnable {
++        val then = onTimeout ?: return@Runnable
++        AppLog.w("WifiJoinWaiter: no WiFi network after ${elapsedSec()}s")
++        stop()
++        then()
++    }
++
++    fun isWifiConnected(): Boolean = isWifiConnected(context)
++
++    /**
++     * Starts waiting up to [timeoutSec]. [onJoined] runs once the join has settled, [onTimeout] if
++     * it never comes, and [onWifiOff] at once when WiFi is off and this app cannot switch it on
++     * (Android 10 and newer); the wait goes on, so switching it on by hand still completes it.
++     */
++    fun start(timeoutSec: Int, onJoined: () -> Unit, onTimeout: () -> Unit, onWifiOff: () -> Unit) {
++        stop()
++        this.onJoined = onJoined
++        this.onTimeout = onTimeout
++        scanIndex = 0
++        startedAtMs = SystemClock.elapsedRealtime()
++        AppLog.i("WifiJoinWaiter: not on WiFi; waiting up to ${timeoutSec}s before the Headunit Server search")
++        if (!ensureWifiEnabled()) onWifiOff()
++        registerListener()
++        handler.post(scanTick)
++        handler.postDelayed(timeoutTick, timeoutSec * 1000L)
++    }
++
++    /** Ends the wait without calling anything back. Safe when nothing is waiting. */
++    fun stop() {
++        if (!isWaiting) return
++        onJoined = null
++        onTimeout = null
++        handler.removeCallbacks(scanTick)
++        handler.removeCallbacks(timeoutTick)
++        callback?.let { try { cm?.unregisterNetworkCallback(it) } catch (_: Exception) {} }
++        callback = null
++        receiver?.let { try { context.unregisterReceiver(it) } catch (_: Exception) {} }
++        receiver = null
++    }
++
++    private fun joined(source: String) {
++        val then = onJoined ?: return
++        AppLog.i("WifiJoinWaiter: joined WiFi after ${elapsedSec()}s ($source)")
++        stop()
++        handler.postDelayed(then, WifiJoinWaitPolicy.SETTLE_DELAY_MS)
++    }
++
++    private fun elapsedSec() = (SystemClock.elapsedRealtime() - startedAtMs) / 1000
++
++    /** False when WiFi is off and stays off; below Android 10 the app may still switch it on. */
++    @SuppressLint("MissingPermission")
++    private fun ensureWifiEnabled(): Boolean {
++        val w = wifi ?: return true
++        if (w.isWifiEnabled) return true
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
++            @Suppress("DEPRECATION")
++            val on = try { w.setWifiEnabled(true) } catch (_: Exception) { false }
++            if (on) {
++                AppLog.i("WifiJoinWaiter: switched WiFi on")
++                return true
++            }
++        } else {
++            // The panel is the one way left to ask; the user just pressed the button, so the app
++            // is in the foreground and may open it.
++            try {
++                context.startActivity(Intent(SystemSettings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
++            } catch (e: Exception) {
++                AppLog.w("WifiJoinWaiter: no WiFi panel on this unit: ${e.message}")
++            }
++        }
++        AppLog.i("WifiJoinWaiter: WiFi is off and the app cannot switch it on")
++        return false
++    }
++
++    @SuppressLint("MissingPermission")
++    private fun requestScan() {
++        val w = wifi ?: return
++        if (!w.isWifiEnabled) return
++        try {
++            @Suppress("DEPRECATION")
++            val accepted = w.startScan()
++            AppLog.d("WifiJoinWaiter: scan ${scanIndex + 1} ${if (accepted) "requested" else "refused (throttled)"}")
++        } catch (e: Exception) {
++            AppLog.d("WifiJoinWaiter: scan refused: ${e.message}")
++        }
++        // Below Android 10 the app may also ask the supplicant to retry its saved networks.
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
++            @Suppress("DEPRECATION")
++            try { w.reconnect() } catch (_: Exception) {}
++        }
++    }
++
++    @SuppressLint("MissingPermission")
++    private fun registerListener() {
++        val cm = cm
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && cm != null) {
++            val cb = object : ConnectivityManager.NetworkCallback() {
++                override fun onAvailable(network: Network) {
++                    handler.post { joined("network callback") }
++                }
++            }
++            try {
++                cm.registerNetworkCallback(
++                    NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), cb
++                )
++                callback = cb
++                return
++            } catch (e: Exception) {
++                AppLog.w("WifiJoinWaiter: network callback refused, using the broadcast: ${e.message}")
++            }
++        }
++        val r = object : BroadcastReceiver() {
++            override fun onReceive(c: Context, intent: Intent) {
++                if (isWifiConnected()) joined("broadcast")
++            }
++        }
++        // EXPORTED, as for the service's other system WiFi broadcasts: NOT_EXPORTED would not
++        // hear the platform.
++        @Suppress("DEPRECATION")
++        ContextCompat.registerReceiver(
++            context, r, IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION), ContextCompat.RECEIVER_EXPORTED
++        )
++        receiver = r
++    }
++
++    companion object {
++        /** True when any WiFi network is connected, the default network or not. */
++        @SuppressLint("MissingPermission")
++        fun isWifiConnected(context: Context): Boolean {
++            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
++            return try {
++                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
++                    cm.allNetworks.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
++                } else {
++                    @Suppress("DEPRECATION")
++                    cm.getNetworkInfo(ConnectivityManager.TYPE_WIFI)?.isConnected == true
++                }
++            } catch (e: Exception) {
++                AppLog.w("WifiJoinWaiter: could not read the network state: ${e.message}")
++                false
++            }
++        }
++    }
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
+index 4a029c44..372e7413 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
+@@ -78,6 +78,8 @@ import com.andrerinas.openheadunit.connection.usb.UsbPermissionAskPolicy
+ import com.andrerinas.openheadunit.connection.usb.UsbPermissionAsks
+ import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
+ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
++import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
++import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaiter
+ import com.andrerinas.openheadunit.connection.wifi.WirelessSelectionPolicy
+ import kotlinx.coroutines.withContext
+ import kotlinx.coroutines.delay
+@@ -1931,10 +1933,20 @@ class HomeFragment : Fragment() {
+                 } else if (AapService.scanningState.value) {
+                     ToastUtils.showToast(requireContext(), getString(R.string.already_scanning), Toast.LENGTH_SHORT)
+                 } else {
+-                    ToastUtils.showToast(requireContext(), getString(R.string.searching_headunit_server), Toast.LENGTH_SHORT)
++                    // Not on WiFi yet: AapService joins it first, and the card shows that step. The
++                    // overlay would cover the card and, with a 30 s bound, could end mid-wait.
++                    val joinsWifiFirst = WifiJoinWaitPolicy.shouldWait(
++                        App.provide(requireContext()).settings.joinWifiBeforeServerSearch,
++                        WifiJoinWaiter.isWifiConnected(requireContext())
++                    )
++                    // AapService says it when it waits, so a second press does not stack two toasts.
++                    if (!joinsWifiFirst) {
++                        ToastUtils.showToast(requireContext(), getString(R.string.searching_headunit_server), Toast.LENGTH_SHORT)
++                    }
+                     (requireActivity() as? MainActivity)?.beginAutoConnect(
+                         "manual WiFi headunit server scan",
+-                        MainActivity.ConnectionUiMode.OVERLAY
++                        if (joinsWifiFirst) MainActivity.ConnectionUiMode.PILL_THEN_OVERLAY
++                        else MainActivity.ConnectionUiMode.OVERLAY
+                     )
+                     val intent = Intent(requireContext(), AapService::class.java).apply {
+                         action = AapService.ACTION_START_WIRELESS_SCAN
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
+index 5e5191f7..6caff87c 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
+@@ -101,6 +101,7 @@ import androidx.lifecycle.Lifecycle
+ import androidx.lifecycle.repeatOnLifecycle
+ import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
+ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeStrategy
++import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
+ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
+ import com.andrerinas.openheadunit.connection.wifi.WirelessRearmPolicy
+ import java.io.File
+@@ -227,6 +228,8 @@ class SettingsFragment : Fragment() {
+     private var pendingAutoEnableHotspot by pending::autoEnableHotspot
+     private var pendingWaitForWifi by pending::waitForWifi
+     private var pendingWaitForWifiTimeout by pending::waitForWifiTimeout
++    private var pendingJoinWifiBeforeServerSearch by pending::joinWifiBeforeServerSearch
++    private var pendingJoinWifiTimeout by pending::joinWifiTimeout
+     private var pendingBluetoothManagerServiceName by pending::bluetoothManagerServiceName
+     private var pendingNativeAaIgnoreExternalBt by pending::nativeAaIgnoreExternalBt
+     private var pendingExternalBtZbtTransport by pending::externalBtZbtTransport
+@@ -719,6 +722,8 @@ class SettingsFragment : Fragment() {
+         pendingHelperConnectionStrategy?.let { if (it != settings.helperConnectionStrategy) settings.helperConnectionStrategy = it }
+         pendingWaitForWifi?.let { if (it != settings.waitForWifiBeforeWifiDirect) settings.waitForWifiBeforeWifiDirect = it }
+         pendingWaitForWifiTimeout?.let { if (it != settings.waitForWifiTimeout) settings.waitForWifiTimeout = it }
++        pendingJoinWifiBeforeServerSearch?.let { if (it != settings.joinWifiBeforeServerSearch) settings.joinWifiBeforeServerSearch = it }
++        pendingJoinWifiTimeout?.let { if (it != settings.joinWifiTimeout) settings.joinWifiTimeout = it }
+         pendingBluetoothManagerServiceName?.let { if (it != settings.bluetoothManagerServiceName) settings.bluetoothManagerServiceName = it }
+         pendingNativeAaIgnoreExternalBt?.let { if (it != settings.nativeAaIgnoreExternalBt) settings.nativeAaIgnoreExternalBt = it }
+         pendingExternalBtZbtTransport?.let { if (it != settings.externalBtZbtTransport) settings.externalBtZbtTransport = it }
+@@ -1307,6 +1312,7 @@ class SettingsFragment : Fragment() {
+             // Mode 1 (Auto Server) can also use the auto-hotspot feature
+             if (pendingWifiConnectionMode == WifiLauncherMode.AUTO) {
+                 addHotspotToggle(items)
++                addJoinWifiBeforeServerSearch(items)
+             }
+         }
+ 
+@@ -4798,6 +4804,40 @@ class SettingsFragment : Fragment() {
+         ))
+     }
+ 
++    /** Only Auto reads it: the WiFi button's one sweep is the only search that waits. */
++    private fun addJoinWifiBeforeServerSearch(items: MutableList<SettingItem>) {
++        val enabled = pendingJoinWifiBeforeServerSearch ?: settings.joinWifiBeforeServerSearch
++        items.add(SettingItem.ToggleSettingEntry(
++            stableId = "joinWifiBeforeServerSearch",
++            nameResId = R.string.join_wifi_before_server_search,
++            descriptionResId = R.string.join_wifi_before_server_search_summary,
++            helpResId = R.string.join_wifi_before_server_search_help,
++            isChecked = enabled,
++            onCheckedChanged = { isChecked ->
++                pendingJoinWifiBeforeServerSearch = isChecked
++                checkChanges()
++                updateSettingsList()
++            }
++        ))
++        if (!enabled) return
++        val timeout = pendingJoinWifiTimeout ?: settings.joinWifiTimeout
++        items.add(SettingItem.SliderSettingEntry(
++            stableId = "joinWifiTimeout",
++            nameResId = R.string.join_wifi_timeout,
++            helpResId = R.string.join_wifi_timeout_help,
++            value = "${timeout}s",
++            sliderValue = timeout.toFloat(),
++            valueFrom = WifiJoinWaitPolicy.MIN_TIMEOUT_SEC.toFloat(),
++            valueTo = WifiJoinWaitPolicy.MAX_TIMEOUT_SEC.toFloat(),
++            stepSize = 5f,
++            onValueChanged = { value ->
++                pendingJoinWifiTimeout = value.toInt()
++                checkChanges()
++                updateSettingsList()
++            }
++        ))
++    }
++
+     private fun addHotspotToggle(items: MutableList<SettingItem>) {
+         items.add(SettingItem.ToggleSettingEntry(
+             stableId = "autoEnableHotspot",
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
+index 6c536437..f22c9ff6 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
+@@ -63,6 +63,8 @@ class SettingsPendingCopy {
+     var autoEnableHotspot: Boolean? = null
+     var waitForWifi: Boolean? = null
+     var waitForWifiTimeout: Int? = null
++    var joinWifiBeforeServerSearch: Boolean? = null
++    var joinWifiTimeout: Int? = null
+     var bluetoothManagerServiceName: String? = null
+     var nativeAaIgnoreExternalBt: Boolean? = null
+     var externalBtZbtTransport: Boolean? = null
+@@ -158,6 +160,8 @@ class SettingsPendingCopy {
+         autoEnableHotspot = settings.autoEnableHotspot
+         waitForWifi = settings.waitForWifiBeforeWifiDirect
+         waitForWifiTimeout = settings.waitForWifiTimeout
++        joinWifiBeforeServerSearch = settings.joinWifiBeforeServerSearch
++        joinWifiTimeout = settings.joinWifiTimeout
+         bluetoothManagerServiceName = settings.bluetoothManagerServiceName
+         nativeAaIgnoreExternalBt = settings.nativeAaIgnoreExternalBt
+         externalBtZbtTransport = settings.externalBtZbtTransport
+@@ -254,6 +258,8 @@ class SettingsPendingCopy {
+         autoEnableHotspot != settings.autoEnableHotspot ||
+         waitForWifi != settings.waitForWifiBeforeWifiDirect ||
+         waitForWifiTimeout != settings.waitForWifiTimeout ||
++        joinWifiBeforeServerSearch != settings.joinWifiBeforeServerSearch ||
++        joinWifiTimeout != settings.joinWifiTimeout ||
+         bluetoothManagerServiceName != settings.bluetoothManagerServiceName ||
+         nativeAaIgnoreExternalBt != settings.nativeAaIgnoreExternalBt ||
+         externalBtZbtTransport != settings.externalBtZbtTransport ||
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt b/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
+index 0d3b0930..96898b2c 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
+@@ -2,6 +2,7 @@ package com.andrerinas.openheadunit.utils
+ 
+ import com.andrerinas.openheadunit.connection.usb.UsbAutoStartPolicy
+ import com.andrerinas.openheadunit.connection.usb.UsbPlugInPolicy
++import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
+ import android.annotation.SuppressLint
+ import com.andrerinas.openheadunit.app.ExternalPowerDisconnectPolicy
+ import android.content.ComponentName
+@@ -2615,6 +2616,16 @@ class Settings(private val context: Context) {
+         get() = prefs.getInt("wait-for-wifi-timeout", 10)
+         set(value) { prefs.edit().putInt("wait-for-wifi-timeout", value).apply() }
+ 
++    /** Headunit Server: the WiFi button joins WiFi first when this unit is not on a network yet. */
++    var joinWifiBeforeServerSearch: Boolean
++        get() = prefs.getBoolean("join-wifi-before-server-search", true)
++        set(value) { prefs.edit().putBoolean("join-wifi-before-server-search", value).apply() }
++
++    /** Seconds the WiFi button waits for that join. See [WifiJoinWaitPolicy.clampTimeoutSec]. */
++    var joinWifiTimeout: Int
++        get() = WifiJoinWaitPolicy.clampTimeoutSec(prefs.getInt("join-wifi-timeout", WifiJoinWaitPolicy.DEFAULT_TIMEOUT_SEC))
++        set(value) { prefs.edit().putInt("join-wifi-timeout", WifiJoinWaitPolicy.clampTimeoutSec(value)).apply() }
++
+     var helperConnectionStrategy: HelperStrategy
+         get() = HelperStrategy.byIdOrDefault(prefs.getInt("helper-connection-strategy", -1))
+         set(value) = prefs.edit().putInt("helper-connection-strategy", value.id).apply()
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt b/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
+index 75134189..c2e667cf 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
+@@ -269,6 +269,8 @@ object SettingsBackupManager {
+         "auto-enable-hotspot" to ValueType.BOOLEAN,
+         "wait-for-wifi-before-wifi-direct" to ValueType.BOOLEAN,
+         "wait-for-wifi-timeout" to ValueType.INT,
++        "join-wifi-before-server-search" to ValueType.BOOLEAN,
++        "join-wifi-timeout" to ValueType.INT,
+         "helper-connection-strategy" to ValueType.INT,
+         "bluetooth-manager-service-name" to ValueType.STRING,
+         // On by default, so what is worth carrying is the opt-out: a user who turned it off should
+diff --git a/app/src/main/res/values-ar/strings.xml b/app/src/main/res/values-ar/strings.xml
+index 04efc51a..f6411128 100644
+--- a/app/src/main/res/values-ar/strings.xml
++++ b/app/src/main/res/values-ar/strings.xml
+@@ -1858,4 +1858,13 @@
+     <string name="usb_wireless_dongle_help">فعّل هذا الخيار إذا كنت تتصل عبر محول USB لاسلكي مثل AAWireless أو Carlinkit. لا يستطيع Open Headunit التمييز بين الدونجل والكابل، لذا يغيّر هذا الخيار تسميات الشاشة الرئيسية من سلكي إلى لاسلكي.</string>
+     <string name="home_subtitle_usb_dongle">لاسلكياً</string>
+     <string name="home_action_connect_wireless_dongle">الاتصال لاسلكياً</string>
++    <string name="join_wifi_before_server_search">الاتصال بشبكة WiFi قبل البحث</string>
++    <string name="join_wifi_before_server_search_summary">إذا لم تكن الوحدة متصلة بشبكة WiFi بعد، ينتظر زر WiFi اتصالها.</string>
++    <string name="join_wifi_before_server_search_help">يبحث زر WiFi عن خادم Headunit على شبكة WiFi لهذه الوحدة. الوحدة التي لم تتصل بعد بنقطة اتصال الهاتف لا تجد ما تبحث فيه، فكانت المحاولة تنتهي فورًا. عند تفعيل هذا الخيار، يطلب الزر من Android البحث عن شبكات WiFi، وينتظر حتى تتصل الوحدة، ثم يبحث. يختار Android الشبكة بنفسه: احفظ نقطة اتصال الهاتف أولًا في إعدادات WiFi لهذه الوحدة. إذا كان WiFi مغلقًا، يطلب منك التطبيق تشغيله.</string>
++    <string name="join_wifi_timeout">مهلة الاتصال بشبكة WiFi</string>
++    <string name="join_wifi_timeout_help">المدة التي ينتظرها زر WiFi حتى تتصل هذه الوحدة بشبكة WiFi، من 10 إلى 120 ثانية. عند انتهاء المهلة يبحث التطبيق مرة واحدة على أي حال.</string>
++    <string name="join_wifi_waiting">جارٍ الاتصال بشبكة WiFi أولًا…</string>
++    <string name="join_wifi_still_waiting">ما زال في انتظار WiFi…</string>
++    <string name="join_wifi_timed_out">لم يتم الاتصال بأي شبكة WiFi. هل نقطة اتصال الهاتف مفعّلة؟</string>
++    <string name="join_wifi_turn_on">شبكة WiFi مغلقة. شغّلها؛ يبدأ البحث فور الاتصال.</string>
+ </resources>
+diff --git a/app/src/main/res/values-cs/strings.xml b/app/src/main/res/values-cs/strings.xml
+index 94bcd423..9e00444e 100644
+--- a/app/src/main/res/values-cs/strings.xml
++++ b/app/src/main/res/values-cs/strings.xml
+@@ -1857,4 +1857,13 @@
+     <string name="usb_wireless_dongle_help">Zapněte, pokud se připojujete přes bezdrátový USB adaptér, například AAWireless nebo Carlinkit. Open Headunit nerozezná adaptér od kabelu, proto tato volba změní popisky na domovské obrazovce na bezdrátové.</string>
+     <string name="home_subtitle_usb_dongle">Bezdrátově</string>
+     <string name="home_action_connect_wireless_dongle">Připojit bezdrátově</string>
++    <string name="join_wifi_before_server_search">Před hledáním se připojit k Wi-Fi</string>
++    <string name="join_wifi_before_server_search_summary">Když jednotka ještě není na Wi-Fi, tlačítko Wi-Fi počká na připojení.</string>
++    <string name="join_wifi_before_server_search_help">Tlačítko Wi-Fi hledá server Headunit v síti Wi-Fi této jednotky. Jednotka, která se ještě nepřipojila k hotspotu telefonu, nemá kde hledat, a pokus proto hned skončil. Když je toto zapnuté, tlačítko požádá Android o vyhledání sítí Wi-Fi, počká na připojení jednotky a pak hledá. Síť vybírá Android: nejdřív si hotspot telefonu uložte v nastavení Wi-Fi této jednotky. Je-li Wi-Fi vypnuté, aplikace vás požádá o jeho zapnutí.</string>
++    <string name="join_wifi_timeout">Časový limit připojení k Wi-Fi</string>
++    <string name="join_wifi_timeout_help">Jak dlouho tlačítko Wi-Fi čeká na připojení této jednotky k Wi-Fi, od 10 do 120 sekund. Po vypršení aplikace stejně jednou hledá.</string>
++    <string name="join_wifi_waiting">Nejdřív se připojuji k Wi-Fi…</string>
++    <string name="join_wifi_still_waiting">Stále čekám na Wi-Fi…</string>
++    <string name="join_wifi_timed_out">Nepřipojeno k žádné síti Wi-Fi. Je hotspot telefonu zapnutý?</string>
++    <string name="join_wifi_turn_on">Wi-Fi je vypnuté. Zapněte ho; hledání začne po připojení.</string>
+ </resources>
+diff --git a/app/src/main/res/values-de/strings.xml b/app/src/main/res/values-de/strings.xml
+index 829502d1..ae707ff2 100644
+--- a/app/src/main/res/values-de/strings.xml
++++ b/app/src/main/res/values-de/strings.xml
+@@ -1860,4 +1860,13 @@
+     <string name="esp32_relay_end_aa_on_disconnect_summary">Sitzung beenden, wenn das Relay zweimal nicht antwortet</string>
+     <string name="esp32_relay_end_aa_on_disconnect_description">Dieses Gerät sendet alle 2 Sekunden eine Statusprüfung an das Relay. Bleiben zwei Prüfungen in Folge ohne Antwort, endet die Android-Auto-Sitzung.</string>
+     <string name="esp32_relay_phase_failed">Fehlgeschlagen: %1$s</string>
++    <string name="join_wifi_before_server_search">Vor der Suche mit WLAN verbinden</string>
++    <string name="join_wifi_before_server_search_summary">Ist das Gerät noch nicht im WLAN, wartet die WLAN-Taste auf die Verbindung.</string>
++    <string name="join_wifi_before_server_search_help">Die WLAN-Taste sucht den Headunit-Server im WLAN dieses Geräts. Ist das Gerät noch nicht mit dem Hotspot des Handys verbunden, gibt es nichts zu durchsuchen, und der Versuch endete sofort. Ist dies an, lässt die Taste Android nach WLANs suchen, wartet auf die Verbindung und sucht dann. Android wählt das Netz selbst: Speichere den Hotspot des Handys vorher in den WLAN-Einstellungen dieses Geräts. Ist WLAN aus, bittet die App dich, es einzuschalten.</string>
++    <string name="join_wifi_timeout">WLAN-Verbindungszeit</string>
++    <string name="join_wifi_timeout_help">Wie lange die WLAN-Taste wartet, bis sich dieses Gerät mit dem WLAN verbindet, 10 bis 120 Sekunden. Danach sucht die App trotzdem einmal.</string>
++    <string name="join_wifi_waiting">Zuerst mit WLAN verbinden…</string>
++    <string name="join_wifi_still_waiting">Warte noch auf WLAN…</string>
++    <string name="join_wifi_timed_out">Kein WLAN verbunden. Ist der Hotspot des Handys an?</string>
++    <string name="join_wifi_turn_on">WLAN ist aus. Schalte es ein; die Suche startet nach der Verbindung.</string>
+ </resources>
+diff --git a/app/src/main/res/values-es-rES/strings.xml b/app/src/main/res/values-es-rES/strings.xml
+index 2c2290dd..0b7e24a6 100644
+--- a/app/src/main/res/values-es-rES/strings.xml
++++ b/app/src/main/res/values-es-rES/strings.xml
+@@ -1871,4 +1871,13 @@
+     <string name="usb_wireless_dongle_help">Actívalo si te conectas mediante un adaptador USB inalámbrico como AAWireless o Carlinkit. Open Headunit no puede distinguir un adaptador de un cable, por lo que esta opción cambia las etiquetas de la pantalla de inicio a inalámbrico.</string>
+     <string name="home_subtitle_usb_dongle">De forma inalámbrica</string>
+     <string name="home_action_connect_wireless_dongle">Conectar de forma inalámbrica</string>
++    <string name="join_wifi_before_server_search">Conectar al Wi-Fi antes de buscar</string>
++    <string name="join_wifi_before_server_search_summary">Si la unidad aún no tiene Wi-Fi, el botón Wi-Fi espera a que se conecte.</string>
++    <string name="join_wifi_before_server_search_help">El botón Wi-Fi busca el Headunit Server en la red Wi-Fi de esta unidad. Una unidad que aún no se ha unido a la zona Wi-Fi del teléfono no tiene dónde buscar, así que el intento terminaba enseguida. Con esto activado, el botón pide a Android que busque redes Wi-Fi, espera a que la unidad se conecte y luego busca. Android elige la red: guarda antes la zona Wi-Fi del teléfono en los ajustes Wi-Fi de esta unidad. Si el Wi-Fi está apagado, la app te pide que lo actives.</string>
++    <string name="join_wifi_timeout">Tiempo de conexión Wi-Fi</string>
++    <string name="join_wifi_timeout_help">Cuánto espera el botón Wi-Fi a que esta unidad se conecte al Wi-Fi, de 10 a 120 segundos. Al acabarse el tiempo, la app busca una vez de todos modos.</string>
++    <string name="join_wifi_waiting">Conectando primero al Wi-Fi…</string>
++    <string name="join_wifi_still_waiting">Aún esperando el Wi-Fi…</string>
++    <string name="join_wifi_timed_out">No se conectó a ninguna red Wi-Fi. ¿Está activa la zona Wi-Fi del teléfono?</string>
++    <string name="join_wifi_turn_on">El Wi-Fi está apagado. Actívalo; la búsqueda empieza al conectarse.</string>
+ </resources>
+diff --git a/app/src/main/res/values-es/strings.xml b/app/src/main/res/values-es/strings.xml
+index 63bc453e..758bac06 100644
+--- a/app/src/main/res/values-es/strings.xml
++++ b/app/src/main/res/values-es/strings.xml
+@@ -1864,4 +1864,13 @@
+     <string name="usb_wireless_dongle_help">Actívalo si te conectas mediante un adaptador USB inalámbrico como AAWireless o Carlinkit. Open Headunit no puede distinguir un dongle de un cable, por lo que esta opción cambia las etiquetas de la pantalla de inicio a inalámbrico.</string>
+     <string name="home_subtitle_usb_dongle">De forma inalámbrica</string>
+     <string name="home_action_connect_wireless_dongle">Conectar de forma inalámbrica</string>
++    <string name="join_wifi_before_server_search">Conectar al Wi-Fi antes de buscar</string>
++    <string name="join_wifi_before_server_search_summary">Si la unidad aún no tiene Wi-Fi, el botón Wi-Fi espera a que se conecte.</string>
++    <string name="join_wifi_before_server_search_help">El botón Wi-Fi busca el Headunit Server en la red Wi-Fi de esta unidad. Una unidad que aún no se ha unido a la zona Wi-Fi del teléfono no tiene dónde buscar, así que el intento terminaba enseguida. Con esto activado, el botón pide a Android que busque redes Wi-Fi, espera a que la unidad se conecte y luego busca. Android elige la red: guarda antes la zona Wi-Fi del teléfono en los ajustes Wi-Fi de esta unidad. Si el Wi-Fi está apagado, la app te pide que lo actives.</string>
++    <string name="join_wifi_timeout">Tiempo de conexión Wi-Fi</string>
++    <string name="join_wifi_timeout_help">Cuánto espera el botón Wi-Fi a que esta unidad se conecte al Wi-Fi, de 10 a 120 segundos. Al acabarse el tiempo, la app busca una vez de todos modos.</string>
++    <string name="join_wifi_waiting">Conectando primero al Wi-Fi…</string>
++    <string name="join_wifi_still_waiting">Aún esperando el Wi-Fi…</string>
++    <string name="join_wifi_timed_out">No se conectó a ninguna red Wi-Fi. ¿Está activa la zona Wi-Fi del teléfono?</string>
++    <string name="join_wifi_turn_on">El Wi-Fi está apagado. Actívalo; la búsqueda empieza al conectarse.</string>
+ </resources>
+diff --git a/app/src/main/res/values-fr/strings.xml b/app/src/main/res/values-fr/strings.xml
+index 37ed3bc9..ec52acb3 100644
+--- a/app/src/main/res/values-fr/strings.xml
++++ b/app/src/main/res/values-fr/strings.xml
+@@ -1902,4 +1902,13 @@
+     <string name="usb_wireless_dongle_help">Activez cette option si vous utilisez un adaptateur USB sans fil comme AAWireless ou Carlinkit. Open Headunit ne peut pas différencier un dongle d’un câble ; cette option remplace donc les libellés câble par sans fil sur l’écran d’accueil.</string>
+     <string name="home_subtitle_usb_dongle">Sans fil</string>
+     <string name="home_action_connect_wireless_dongle">Connecter sans fil</string>
++    <string name="join_wifi_before_server_search">Rejoindre le Wi-Fi avant la recherche</string>
++    <string name="join_wifi_before_server_search_summary">Si l\'unité n\'est pas encore en Wi-Fi, le bouton Wi-Fi attend la connexion.</string>
++    <string name="join_wifi_before_server_search_help">Le bouton Wi-Fi cherche le Headunit Server sur le réseau Wi-Fi de cette unité. Une unité qui n\'a pas encore rejoint le point d\'accès du téléphone n\'a rien à chercher, et la tentative s\'arrêtait aussitôt. Avec cette option, le bouton demande à Android de rechercher les réseaux Wi-Fi, attend que l\'unité se connecte, puis cherche. Android choisit le réseau : enregistrez d\'abord le point d\'accès du téléphone dans les réglages Wi-Fi de l\'unité. Si le Wi-Fi est désactivé, l\'application vous demande de l\'activer.</string>
++    <string name="join_wifi_timeout">Délai de connexion Wi-Fi</string>
++    <string name="join_wifi_timeout_help">Durée pendant laquelle le bouton Wi-Fi attend que l\'unité rejoigne le Wi-Fi, de 10 à 120 secondes. Une fois le délai écoulé, l\'application cherche quand même une fois.</string>
++    <string name="join_wifi_waiting">Connexion au Wi-Fi d\'abord…</string>
++    <string name="join_wifi_still_waiting">Toujours en attente du Wi-Fi…</string>
++    <string name="join_wifi_timed_out">Aucun réseau Wi-Fi rejoint. Le point d\'accès du téléphone est-il activé ?</string>
++    <string name="join_wifi_turn_on">Le Wi-Fi est désactivé. Activez-le ; la recherche démarre une fois connecté.</string>
+ </resources>
+diff --git a/app/src/main/res/values-hi/strings.xml b/app/src/main/res/values-hi/strings.xml
+index 56b13e9f..c5ed9076 100644
+--- a/app/src/main/res/values-hi/strings.xml
++++ b/app/src/main/res/values-hi/strings.xml
+@@ -1903,4 +1903,13 @@
+     <string name="usb_wireless_dongle_help">यदि आप AAWireless या Carlinkit जैसे वायरलेस USB अडैप्टर से कनेक्ट करते हैं तो इसे चालू करें। Open Headunit डोंगल और केबल में अंतर नहीं कर सकता, इसलिए यह विकल्प होम स्क्रीन के लेबल को केबल से वायरलेस में बदल देता है।</string>
+     <string name="home_subtitle_usb_dongle">वायरलेस रूप से</string>
+     <string name="home_action_connect_wireless_dongle">वायरलेस कनेक्ट करें</string>
++    <string name="join_wifi_before_server_search">खोजने से पहले वाई-फ़ाई से जुड़ें</string>
++    <string name="join_wifi_before_server_search_summary">यूनिट अभी वाई-फ़ाई पर नहीं है, तो वाई-फ़ाई बटन जुड़ने का इंतज़ार करता है।</string>
++    <string name="join_wifi_before_server_search_help">वाई-फ़ाई बटन इस यूनिट के वाई-फ़ाई नेटवर्क पर हेडयूनिट सर्वर खोजता है। जो यूनिट अभी फ़ोन के हॉटस्पॉट से नहीं जुड़ी, उसके पास खोजने को कुछ नहीं होता, इसलिए प्रयास तुरंत खत्म हो जाता था। यह चालू होने पर बटन Android से वाई-फ़ाई स्कैन करवाता है, यूनिट के जुड़ने तक इंतज़ार करता है, फिर खोजता है। नेटवर्क Android खुद चुनता है: पहले फ़ोन का हॉटस्पॉट इस यूनिट की वाई-फ़ाई सेटिंग में सेव करें। वाई-फ़ाई बंद हो तो ऐप उसे चालू करने को कहता है।</string>
++    <string name="join_wifi_timeout">वाई-फ़ाई से जुड़ने की समय सीमा</string>
++    <string name="join_wifi_timeout_help">वाई-फ़ाई बटन इस यूनिट के वाई-फ़ाई से जुड़ने का कितनी देर इंतज़ार करे, 10 से 120 सेकंड। समय खत्म होने पर ऐप फिर भी एक बार खोजता है।</string>
++    <string name="join_wifi_waiting">पहले वाई-फ़ाई से जुड़ रहे हैं…</string>
++    <string name="join_wifi_still_waiting">अभी भी वाई-फ़ाई का इंतज़ार है…</string>
++    <string name="join_wifi_timed_out">किसी वाई-फ़ाई नेटवर्क से नहीं जुड़ा। क्या फ़ोन का हॉटस्पॉट चालू है?</string>
++    <string name="join_wifi_turn_on">वाई-फ़ाई बंद है। उसे चालू करें; जुड़ते ही खोज शुरू होगी।</string>
+ </resources>
+diff --git a/app/src/main/res/values-hu/strings.xml b/app/src/main/res/values-hu/strings.xml
+index 09a770a9..aa5703fc 100644
+--- a/app/src/main/res/values-hu/strings.xml
++++ b/app/src/main/res/values-hu/strings.xml
+@@ -1857,4 +1857,13 @@
+     <string name="usb_wireless_dongle_help">Kapcsold be, ha vezeték nélküli USB-adapterrel (például AAWireless vagy Carlinkit) csatlakozol. Az Open Headunit nem tudja megkülönböztetni az adaptert a kábeltől, ezért ez az opció vezeték nélkülire cseréli a kezdőképernyő feliratait.</string>
+     <string name="home_subtitle_usb_dongle">Vezeték nélkül</string>
+     <string name="home_action_connect_wireless_dongle">Csatlakozás vezeték nélkül</string>
++    <string name="join_wifi_before_server_search">Csatlakozás Wi-Fi-hez keresés előtt</string>
++    <string name="join_wifi_before_server_search_summary">Ha az egység még nincs Wi-Fi-n, a Wi-Fi gomb megvárja a csatlakozást.</string>
++    <string name="join_wifi_before_server_search_help">A Wi-Fi gomb a fejegység-szervert ennek az egységnek a Wi-Fi-hálózatán keresi. Ha az egység még nem csatlakozott a telefon hotspotjához, nincs hol keresni, ezért a próbálkozás azonnal véget ért. Ha ez be van kapcsolva, a gomb Wi-Fi-keresést kér az Androidtól, megvárja az egység csatlakozását, majd keres. A hálózatot az Android választja: előbb mentsd el a telefon hotspotját az egység Wi-Fi-beállításaiban. Ha a Wi-Fi ki van kapcsolva, az app megkér, hogy kapcsold be.</string>
++    <string name="join_wifi_timeout">Wi-Fi-csatlakozás időkorlátja</string>
++    <string name="join_wifi_timeout_help">Mennyi ideig várjon a Wi-Fi gomb, hogy az egység Wi-Fi-hez csatlakozzon, 10 és 120 másodperc között. Az idő leteltével az app egyszer akkor is keres.</string>
++    <string name="join_wifi_waiting">Előbb csatlakozás Wi-Fi-hez…</string>
++    <string name="join_wifi_still_waiting">Még mindig várakozás a Wi-Fi-re…</string>
++    <string name="join_wifi_timed_out">Nem sikerült Wi-Fi-hálózathoz csatlakozni. Be van kapcsolva a telefon hotspotja?</string>
++    <string name="join_wifi_turn_on">A Wi-Fi ki van kapcsolva. Kapcsold be; a keresés a csatlakozás után indul.</string>
+ </resources>
+diff --git a/app/src/main/res/values-in/strings.xml b/app/src/main/res/values-in/strings.xml
+index 92b4728d..0f5b4331 100644
+--- a/app/src/main/res/values-in/strings.xml
++++ b/app/src/main/res/values-in/strings.xml
+@@ -1904,4 +1904,13 @@
+     <string name="usb_wireless_dongle_help">Aktifkan ini jika Anda terhubung melalui adaptor USB nirkabel seperti AAWireless atau Carlinkit. Open Headunit tidak dapat membedakan dongle dari kabel, jadi opsi ini mengubah label layar utama dari kabel menjadi nirkabel.</string>
+     <string name="home_subtitle_usb_dongle">Secara nirkabel</string>
+     <string name="home_action_connect_wireless_dongle">Hubungkan secara nirkabel</string>
++    <string name="join_wifi_before_server_search">Sambungkan WiFi sebelum mencari</string>
++    <string name="join_wifi_before_server_search_summary">Jika unit belum terhubung WiFi, tombol WiFi menunggu sampai terhubung.</string>
++    <string name="join_wifi_before_server_search_help">Tombol WiFi mencari Server Headunit di jaringan WiFi unit ini. Unit yang belum tersambung ke hotspot ponsel tidak punya jaringan untuk dicari, jadi percobaan langsung berakhir. Jika ini aktif, tombol meminta Android memindai WiFi, menunggu sampai unit tersambung, lalu mencari. Android yang memilih jaringannya: simpan dulu hotspot ponsel di pengaturan WiFi unit ini. Jika WiFi mati, aplikasi meminta Anda menyalakannya.</string>
++    <string name="join_wifi_timeout">Batas waktu sambungan WiFi</string>
++    <string name="join_wifi_timeout_help">Berapa lama tombol WiFi menunggu unit ini tersambung ke WiFi, 10 sampai 120 detik. Setelah waktu habis, aplikasi tetap mencari sekali.</string>
++    <string name="join_wifi_waiting">Menyambungkan WiFi dulu…</string>
++    <string name="join_wifi_still_waiting">Masih menunggu WiFi…</string>
++    <string name="join_wifi_timed_out">Tidak tersambung ke jaringan WiFi. Apakah hotspot ponsel menyala?</string>
++    <string name="join_wifi_turn_on">WiFi mati. Nyalakan; pencarian dimulai setelah tersambung.</string>
+ </resources>
+diff --git a/app/src/main/res/values-it/strings.xml b/app/src/main/res/values-it/strings.xml
+index 1a0b9f2a..9ed30315 100644
+--- a/app/src/main/res/values-it/strings.xml
++++ b/app/src/main/res/values-it/strings.xml
+@@ -1859,4 +1859,13 @@
+     <string name="usb_wireless_dongle_help">Attiva questa opzione se ti colleghi tramite un adattatore USB wireless come AAWireless o Carlinkit. Open Headunit non può distinguere un dongle da un cavo, quindi questa opzione cambia le etichette della schermata iniziale da cavo a wireless.</string>
+     <string name="home_subtitle_usb_dongle">In modalità wireless</string>
+     <string name="home_action_connect_wireless_dongle">Connetti in modalità wireless</string>
++    <string name="join_wifi_before_server_search">Connetti al WiFi prima di cercare</string>
++    <string name="join_wifi_before_server_search_summary">Se l\'unità non è ancora sul WiFi, il pulsante WiFi attende la connessione.</string>
++    <string name="join_wifi_before_server_search_help">Il pulsante WiFi cerca l\'Headunit Server sulla rete WiFi di questa unità. Un\'unità non ancora collegata all\'hotspot del telefono non ha nulla in cui cercare, quindi il tentativo finiva subito. Con questa opzione, il pulsante chiede ad Android di cercare reti WiFi, attende che l\'unità si colleghi e poi cerca. La rete la sceglie Android: salva prima l\'hotspot del telefono nelle impostazioni WiFi di questa unità. Se il WiFi è spento, l\'app ti chiede di accenderlo.</string>
++    <string name="join_wifi_timeout">Timeout connessione WiFi</string>
++    <string name="join_wifi_timeout_help">Quanto il pulsante WiFi attende che questa unità si colleghi al WiFi, da 10 a 120 secondi. Allo scadere, l\'app cerca comunque una volta.</string>
++    <string name="join_wifi_waiting">Connessione al WiFi in corso…</string>
++    <string name="join_wifi_still_waiting">Ancora in attesa del WiFi…</string>
++    <string name="join_wifi_timed_out">Nessuna rete WiFi collegata. L\'hotspot del telefono è attivo?</string>
++    <string name="join_wifi_turn_on">Il WiFi è spento. Accendilo; la ricerca parte appena si collega.</string>
+ </resources>
+diff --git a/app/src/main/res/values-ja/strings.xml b/app/src/main/res/values-ja/strings.xml
+index 2f6f360d..9edd0a51 100644
+--- a/app/src/main/res/values-ja/strings.xml
++++ b/app/src/main/res/values-ja/strings.xml
+@@ -1859,4 +1859,13 @@
+     <string name="usb_wireless_dongle_help">AAWireless や Carlinkit などのワイヤレス USB アダプターで接続する場合に有効にします。Open Headunit はドングルとケーブルを判別できないため、ホーム画面の表示をケーブルからワイヤレスに切り替えます。</string>
+     <string name="home_subtitle_usb_dongle">ワイヤレス接続</string>
+     <string name="home_action_connect_wireless_dongle">ワイヤレスで接続</string>
++    <string name="join_wifi_before_server_search">検索の前にWi-Fiに接続</string>
++    <string name="join_wifi_before_server_search_summary">このユニットがまだWi-Fiにつながっていない場合、Wi-Fiボタンは接続を待ちます。</string>
++    <string name="join_wifi_before_server_search_help">Wi-Fiボタンは、このユニットのWi-FiネットワークでHeadunit Serverを探します。スマートフォンのテザリングにまだ接続していないユニットでは探す先がなく、試行はすぐに終わっていました。オンにすると、ボタンはAndroidにWi-Fiのスキャンを依頼し、ユニットの接続を待ってから検索します。ネットワークはAndroidが選ぶため、先にスマートフォンのテザリングをこのユニットのWi-Fi設定に保存してください。Wi-Fiがオフの場合は、オンにするよう求めます。</string>
++    <string name="join_wifi_timeout">Wi-Fi接続のタイムアウト</string>
++    <string name="join_wifi_timeout_help">Wi-FiボタンがこのユニットのWi-Fi接続を待つ時間（10〜120秒）。時間切れになっても、アプリは一度だけ検索します。</string>
++    <string name="join_wifi_waiting">まずWi-Fiに接続しています…</string>
++    <string name="join_wifi_still_waiting">Wi-Fiを待っています…</string>
++    <string name="join_wifi_timed_out">Wi-Fiに接続できませんでした。スマートフォンのテザリングはオンですか？</string>
++    <string name="join_wifi_turn_on">Wi-Fiがオフです。オンにすると、接続後に検索が始まります。</string>
+ </resources>
+diff --git a/app/src/main/res/values-ka/strings.xml b/app/src/main/res/values-ka/strings.xml
+index 02b90e95..d12a1563 100644
+--- a/app/src/main/res/values-ka/strings.xml
++++ b/app/src/main/res/values-ka/strings.xml
+@@ -1842,4 +1842,13 @@
+     <string name="usb_wireless_dongle_help">ჩართეთ, თუ უკავშირდებით უსადენო USB ადაპტერით (მაგ. AAWireless ან Carlinkit). Open Headunit ვერ ასხვავებს დონგლს კაბელისგან, ამიტომ ეს პარამეტრი მთავარ ეკრანზე წარწერებს კაბელიდან უსადენოზე ცვლის.</string>
+     <string name="home_subtitle_usb_dongle">უსადენოდ</string>
+     <string name="home_action_connect_wireless_dongle">უსადენოდ დაკავშირება</string>
++    <string name="join_wifi_before_server_search">ძებნამდე WiFi-სთან დაკავშირება</string>
++    <string name="join_wifi_before_server_search_summary">თუ მოწყობილობა ჯერ WiFi-ზე არ არის, WiFi ღილაკი დაკავშირებას დაელოდება.</string>
++    <string name="join_wifi_before_server_search_help">WiFi ღილაკი Headunit Server-ს ამ მოწყობილობის WiFi ქსელში ეძებს. მოწყობილობას, რომელიც ჯერ ტელეფონის ჰოტსპოტს არ დაუკავშირდა, საძებნი არაფერი აქვს, ამიტომ მცდელობა მაშინვე მთავრდებოდა. როცა ეს ჩართულია, ღილაკი Android-ს WiFi-ს სკანირებას სთხოვს, ელოდება დაკავშირებას და შემდეგ ეძებს. ქსელს Android ირჩევს: ჯერ ტელეფონის ჰოტსპოტი შეინახეთ ამ მოწყობილობის WiFi პარამეტრებში. თუ WiFi გამორთულია, აპი ჩართვას გთხოვთ.</string>
++    <string name="join_wifi_timeout">WiFi-სთან დაკავშირების დროის ლიმიტი</string>
++    <string name="join_wifi_timeout_help">რამდენ ხანს ელოდება WiFi ღილაკი ამ მოწყობილობის WiFi-სთან დაკავშირებას, 10-დან 120 წამამდე. დროის ამოწურვის შემდეგ აპი მაინც ერთხელ ეძებს.</string>
++    <string name="join_wifi_waiting">ჯერ WiFi-სთან დაკავშირება…</string>
++    <string name="join_wifi_still_waiting">ჯერ კიდევ ველოდებით WiFi-ს…</string>
++    <string name="join_wifi_timed_out">WiFi ქსელს ვერ დაუკავშირდა. ჩართულია ტელეფონის ჰოტსპოტი?</string>
++    <string name="join_wifi_turn_on">WiFi გამორთულია. ჩართეთ; ძებნა დაკავშირებისთანავე დაიწყება.</string>
+ </resources>
+diff --git a/app/src/main/res/values-ko/strings.xml b/app/src/main/res/values-ko/strings.xml
+index e8fcf134..c2bf0982 100644
+--- a/app/src/main/res/values-ko/strings.xml
++++ b/app/src/main/res/values-ko/strings.xml
+@@ -1851,4 +1851,13 @@
+     <string name="usb_wireless_dongle_help">AAWireless 또는 Carlinkit 같은 무선 USB 어댑터를 통해 연결하는 경우 켜세요. Open Headunit은 동글과 일반 케이블을 구분할 수 없으므로, 이 옵션으로 홈 화면 표시를 유선에서 무선으로 바꿉니다.</string>
+     <string name="home_subtitle_usb_dongle">무선으로</string>
+     <string name="home_action_connect_wireless_dongle">무선으로 연결</string>
++    <string name="join_wifi_before_server_search">검색 전에 Wi-Fi 연결</string>
++    <string name="join_wifi_before_server_search_summary">기기가 아직 Wi-Fi에 연결되지 않았으면 Wi-Fi 버튼이 연결을 기다립니다.</string>
++    <string name="join_wifi_before_server_search_help">Wi-Fi 버튼은 이 기기의 Wi-Fi 네트워크에서 헤드유닛 서버를 찾습니다. 아직 휴대폰 핫스팟에 연결되지 않은 기기는 찾을 곳이 없어 시도가 바로 끝났습니다. 이 옵션을 켜면 버튼이 Android에 Wi-Fi 검색을 요청하고, 기기가 연결될 때까지 기다린 뒤 검색합니다. 네트워크는 Android가 고르므로 먼저 휴대폰 핫스팟을 이 기기의 Wi-Fi 설정에 저장하세요. Wi-Fi가 꺼져 있으면 앱이 켜 달라고 요청합니다.</string>
++    <string name="join_wifi_timeout">Wi-Fi 연결 대기 시간</string>
++    <string name="join_wifi_timeout_help">Wi-Fi 버튼이 이 기기의 Wi-Fi 연결을 기다리는 시간으로, 10~120초입니다. 시간이 지나도 앱은 한 번은 검색합니다.</string>
++    <string name="join_wifi_waiting">먼저 Wi-Fi에 연결하는 중…</string>
++    <string name="join_wifi_still_waiting">아직 Wi-Fi를 기다리는 중…</string>
++    <string name="join_wifi_timed_out">Wi-Fi 네트워크에 연결되지 않았습니다. 휴대폰 핫스팟이 켜져 있나요?</string>
++    <string name="join_wifi_turn_on">Wi-Fi가 꺼져 있습니다. 켜면 연결 후 검색이 시작됩니다.</string>
+ </resources>
+diff --git a/app/src/main/res/values-nl/strings.xml b/app/src/main/res/values-nl/strings.xml
+index 5c1e580f..27d84594 100644
+--- a/app/src/main/res/values-nl/strings.xml
++++ b/app/src/main/res/values-nl/strings.xml
+@@ -1861,4 +1861,13 @@
+     <string name="usb_wireless_dongle_help">Schakel dit in als je verbindt via een draadloze USB-adapter zoals AAWireless of Carlinkit. Open Headunit kan een dongle niet van een kabel onderscheiden, dus deze optie verandert de startschermteksten van kabel naar draadloos.</string>
+     <string name="home_subtitle_usb_dongle">Draadloos</string>
+     <string name="home_action_connect_wireless_dongle">Draadloos verbinden</string>
++    <string name="join_wifi_before_server_search">Eerst met wifi verbinden</string>
++    <string name="join_wifi_before_server_search_summary">Is deze unit nog niet op wifi, dan wacht de wifiknop op de verbinding.</string>
++    <string name="join_wifi_before_server_search_help">De wifiknop zoekt de headunitserver op het wifinetwerk van deze unit. Een unit die nog niet met de hotspot van de telefoon verbonden is, heeft niets om te doorzoeken, dus de poging stopte meteen. Met deze optie laat de knop Android naar wifi zoeken, wacht tot deze unit verbonden is en zoekt dan. Android kiest het netwerk zelf: sla de hotspot van de telefoon eerst op in de wifi-instellingen van deze unit. Staat wifi uit, dan vraagt de app je het aan te zetten.</string>
++    <string name="join_wifi_timeout">Wachttijd wifiverbinding</string>
++    <string name="join_wifi_timeout_help">Hoe lang de wifiknop wacht tot deze unit met wifi verbonden is, van 10 tot 120 seconden. Daarna zoekt de app toch één keer.</string>
++    <string name="join_wifi_waiting">Eerst verbinden met wifi…</string>
++    <string name="join_wifi_still_waiting">Nog steeds wachten op wifi…</string>
++    <string name="join_wifi_timed_out">Geen wifinetwerk verbonden. Staat de hotspot van de telefoon aan?</string>
++    <string name="join_wifi_turn_on">Wifi staat uit. Zet het aan; het zoeken begint zodra er verbinding is.</string>
+ </resources>
+diff --git a/app/src/main/res/values-pl/strings.xml b/app/src/main/res/values-pl/strings.xml
+index 801acf3b..53791d1f 100644
+--- a/app/src/main/res/values-pl/strings.xml
++++ b/app/src/main/res/values-pl/strings.xml
+@@ -1862,4 +1862,13 @@
+     <string name="usb_wireless_dongle_help">Włącz tę opcję, jeśli łączysz się przez bezprzewodowy adapter USB, np. AAWireless lub Carlinkit. Open Headunit nie odróżnia adaptera od kabla, więc ta opcja zmienia etykiety na ekranie głównym z kablowych na bezprzewodowe.</string>
+     <string name="home_subtitle_usb_dongle">Bezprzewodowo</string>
+     <string name="home_action_connect_wireless_dongle">Połącz bezprzewodowo</string>
++    <string name="join_wifi_before_server_search">Połącz z WiFi przed wyszukiwaniem</string>
++    <string name="join_wifi_before_server_search_summary">Jeśli jednostka nie ma jeszcze WiFi, przycisk WiFi czeka na połączenie.</string>
++    <string name="join_wifi_before_server_search_help">Przycisk WiFi szuka Headunit Server w sieci WiFi tej jednostki. Jednostka, która nie połączyła się jeszcze z hotspotem telefonu, nie ma czego przeszukać, więc próba od razu się kończyła. Gdy to jest włączone, przycisk prosi Androida o skanowanie WiFi, czeka na połączenie jednostki, a potem szuka. Sieć wybiera Android: najpierw zapisz hotspot telefonu w ustawieniach WiFi tej jednostki. Gdy WiFi jest wyłączone, aplikacja poprosi o jego włączenie.</string>
++    <string name="join_wifi_timeout">Limit czasu połączenia WiFi</string>
++    <string name="join_wifi_timeout_help">Jak długo przycisk WiFi czeka, aż ta jednostka połączy się z WiFi, od 10 do 120 sekund. Po upływie czasu aplikacja i tak szuka raz.</string>
++    <string name="join_wifi_waiting">Najpierw łączenie z WiFi…</string>
++    <string name="join_wifi_still_waiting">Nadal czekam na WiFi…</string>
++    <string name="join_wifi_timed_out">Nie połączono z żadną siecią WiFi. Czy hotspot telefonu jest włączony?</string>
++    <string name="join_wifi_turn_on">WiFi jest wyłączone. Włącz je; wyszukiwanie ruszy po połączeniu.</string>
+ </resources>
+diff --git a/app/src/main/res/values-pt-rBR/strings.xml b/app/src/main/res/values-pt-rBR/strings.xml
+index 2f3b4ea2..42dd4637 100644
+--- a/app/src/main/res/values-pt-rBR/strings.xml
++++ b/app/src/main/res/values-pt-rBR/strings.xml
+@@ -1857,4 +1857,13 @@
+     <string name="usb_wireless_dongle_help">Ative se você se conecta por um adaptador USB sem fio como AAWireless ou Carlinkit. O Open Headunit não consegue diferenciar um dongle de um cabo, então esta opção muda os rótulos da tela inicial de cabo para sem fio.</string>
+     <string name="home_subtitle_usb_dongle">Sem fio</string>
+     <string name="home_action_connect_wireless_dongle">Conectar sem fio</string>
++    <string name="join_wifi_before_server_search">Conectar ao WiFi antes de buscar</string>
++    <string name="join_wifi_before_server_search_summary">Se a unidade ainda não estiver no WiFi, o botão WiFi espera a conexão.</string>
++    <string name="join_wifi_before_server_search_help">O botão WiFi procura o Headunit Server na rede WiFi desta unidade. Uma unidade que ainda não entrou no hotspot do celular não tem onde procurar, então a tentativa terminava na hora. Com isto ligado, o botão pede ao Android para procurar redes WiFi, espera a unidade se conectar e depois busca. O Android escolhe a rede: salve antes o hotspot do celular nas configurações de WiFi desta unidade. Se o WiFi estiver desligado, o app pede para você ligá-lo.</string>
++    <string name="join_wifi_timeout">Tempo limite de conexão WiFi</string>
++    <string name="join_wifi_timeout_help">Quanto tempo o botão WiFi espera esta unidade se conectar ao WiFi, de 10 a 120 segundos. Quando o tempo acaba, o app busca uma vez mesmo assim.</string>
++    <string name="join_wifi_waiting">Conectando ao WiFi primeiro…</string>
++    <string name="join_wifi_still_waiting">Ainda aguardando o WiFi…</string>
++    <string name="join_wifi_timed_out">Nenhuma rede WiFi conectada. O hotspot do celular está ligado?</string>
++    <string name="join_wifi_turn_on">O WiFi está desligado. Ligue-o; a busca começa quando conectar.</string>
+ </resources>
+diff --git a/app/src/main/res/values-pt-rPT/strings.xml b/app/src/main/res/values-pt-rPT/strings.xml
+index 24328119..f4cbacdc 100644
+--- a/app/src/main/res/values-pt-rPT/strings.xml
++++ b/app/src/main/res/values-pt-rPT/strings.xml
+@@ -1909,4 +1909,13 @@
+     <string name="usb_wireless_dongle_help">Ative esta opção se utiliza um adaptador USB sem fios como AAWireless ou Carlinkit. O Open Headunit não distingue um dongle de um cabo, pelo que esta opção altera os textos do ecrã inicial de cabo para sem fios.</string>
+     <string name="home_subtitle_usb_dongle">Sem fios</string>
+     <string name="home_action_connect_wireless_dongle">Ligar sem fios</string>
++    <string name="join_wifi_before_server_search">Ligar ao Wi-Fi antes de procurar</string>
++    <string name="join_wifi_before_server_search_summary">Se a unidade ainda não estiver no Wi-Fi, o botão Wi-Fi espera pela ligação.</string>
++    <string name="join_wifi_before_server_search_help">O botão Wi-Fi procura o Headunit Server na rede Wi-Fi desta unidade. Uma unidade que ainda não se ligou à zona Wi-Fi do telemóvel não tem onde procurar, por isso a tentativa terminava logo. Com isto ativo, o botão pede ao Android para procurar redes Wi-Fi, espera que a unidade se ligue e depois procura. O Android escolhe a rede: guarde primeiro a zona Wi-Fi do telemóvel nas definições Wi-Fi desta unidade. Se o Wi-Fi estiver desligado, a app pede-lhe para o ligar.</string>
++    <string name="join_wifi_timeout">Tempo limite de ligação Wi-Fi</string>
++    <string name="join_wifi_timeout_help">Quanto tempo o botão Wi-Fi espera que esta unidade se ligue ao Wi-Fi, de 10 a 120 segundos. Quando o tempo acaba, a app procura uma vez na mesma.</string>
++    <string name="join_wifi_waiting">A ligar primeiro ao Wi-Fi…</string>
++    <string name="join_wifi_still_waiting">Ainda à espera do Wi-Fi…</string>
++    <string name="join_wifi_timed_out">Nenhuma rede Wi-Fi ligada. A zona Wi-Fi do telemóvel está ativa?</string>
++    <string name="join_wifi_turn_on">O Wi-Fi está desligado. Ligue-o; a procura começa quando se ligar.</string>
+ </resources>
+diff --git a/app/src/main/res/values-ro/strings.xml b/app/src/main/res/values-ro/strings.xml
+index 25c89b8e..7f340997 100644
+--- a/app/src/main/res/values-ro/strings.xml
++++ b/app/src/main/res/values-ro/strings.xml
+@@ -1855,4 +1855,13 @@
+     <string name="usb_wireless_dongle_help">Activează această opțiune dacă te conectezi printr-un adaptor USB wireless precum AAWireless sau Carlinkit. Open Headunit nu poate deosebi un dongle de un cablu, așa că această opțiune schimbă etichetele de pe ecranul principal din cablu în wireless.</string>
+     <string name="home_subtitle_usb_dongle">Wireless</string>
+     <string name="home_action_connect_wireless_dongle">Conectează wireless</string>
++    <string name="join_wifi_before_server_search">Conectează la WiFi înainte de căutare</string>
++    <string name="join_wifi_before_server_search_summary">Dacă unitatea nu e încă pe WiFi, butonul WiFi așteaptă conectarea.</string>
++    <string name="join_wifi_before_server_search_help">Butonul WiFi caută serverul Headunit în rețeaua WiFi a acestei unități. O unitate care nu s-a conectat încă la hotspotul telefonului nu are unde căuta, așa că încercarea se termina imediat. Cu această opțiune, butonul cere Android să caute rețele WiFi, așteaptă conectarea unității, apoi caută. Rețeaua o alege Android: salvează mai întâi hotspotul telefonului în setările WiFi ale unității. Dacă WiFi e oprit, aplicația îți cere să-l pornești.</string>
++    <string name="join_wifi_timeout">Limita de conectare WiFi</string>
++    <string name="join_wifi_timeout_help">Cât așteaptă butonul WiFi ca unitatea să se conecteze la WiFi, între 10 și 120 de secunde. La expirare, aplicația caută totuși o dată.</string>
++    <string name="join_wifi_waiting">Mai întâi conectare la WiFi…</string>
++    <string name="join_wifi_still_waiting">Încă se așteaptă WiFi…</string>
++    <string name="join_wifi_timed_out">Nicio rețea WiFi conectată. Este pornit hotspotul telefonului?</string>
++    <string name="join_wifi_turn_on">WiFi este oprit. Pornește-l; căutarea începe după conectare.</string>
+ </resources>
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index 5b895329..e9e0af2b 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml
+@@ -1856,4 +1856,13 @@ Open Headunit предоставляется «как есть» без каки
+     <string name="usb_wireless_dongle_help">Включите, если подключаетесь через беспроводной USB-адаптер (например, AAWireless или Carlinkit). Open Headunit не может отличить адаптер от кабеля, поэтому эта настройка меняет подписи на главном экране с кабельных на беспроводные.</string>
+     <string name="home_subtitle_usb_dongle">Без проводов</string>
+     <string name="home_action_connect_wireless_dongle">Подключить без проводов</string>
++    <string name="join_wifi_before_server_search">Подключаться к Wi‑Fi перед поиском</string>
++    <string name="join_wifi_before_server_search_summary">Если устройство ещё не в Wi‑Fi, кнопка Wi‑Fi ждёт подключения.</string>
++    <string name="join_wifi_before_server_search_help">Кнопка Wi‑Fi ищет Headunit Server в сети Wi‑Fi этого устройства. Если устройство ещё не подключилось к точке доступа телефона, искать негде, и попытка сразу заканчивалась. Когда это включено, кнопка просит Android поискать сети Wi‑Fi, ждёт подключения устройства и затем ищет. Сеть выбирает Android: сначала сохраните точку доступа телефона в настройках Wi‑Fi этого устройства. Если Wi‑Fi выключен, приложение попросит его включить.</string>
++    <string name="join_wifi_timeout">Тайм-аут подключения к Wi‑Fi</string>
++    <string name="join_wifi_timeout_help">Сколько кнопка Wi‑Fi ждёт подключения этого устройства к Wi‑Fi, от 10 до 120 секунд. По истечении времени приложение всё равно выполнит один поиск.</string>
++    <string name="join_wifi_waiting">Сначала подключение к Wi‑Fi…</string>
++    <string name="join_wifi_still_waiting">Всё ещё ждём Wi‑Fi…</string>
++    <string name="join_wifi_timed_out">Не удалось подключиться к Wi‑Fi. Включена ли точка доступа телефона?</string>
++    <string name="join_wifi_turn_on">Wi‑Fi выключен. Включите его; поиск начнётся после подключения.</string>
+ </resources>
+diff --git a/app/src/main/res/values-th/strings.xml b/app/src/main/res/values-th/strings.xml
+index 716ff1b1..40f18196 100644
+--- a/app/src/main/res/values-th/strings.xml
++++ b/app/src/main/res/values-th/strings.xml
+@@ -1910,4 +1910,13 @@
+     <string name="usb_wireless_dongle_help">เปิดใช้งานตัวเลือกนี้หากคุณเชื่อมต่อผ่านอะแดปเตอร์ USB ไร้สาย เช่น AAWireless หรือ Carlinkit Open Headunit ไม่สามารถแยกดองเกิลออกจากสายเคเบิลได้ ตัวเลือกนี้จึงเปลี่ยนข้อความบนหน้าจอหลักจากสายเคเบิลเป็นไร้สาย</string>
+     <string name="home_subtitle_usb_dongle">แบบไร้สาย</string>
+     <string name="home_action_connect_wireless_dongle">เชื่อมต่อแบบไร้สาย</string>
++    <string name="join_wifi_before_server_search">เชื่อมต่อ Wi-Fi ก่อนค้นหา</string>
++    <string name="join_wifi_before_server_search_summary">ถ้าเครื่องยังไม่ได้ต่อ Wi-Fi ปุ่ม Wi-Fi จะรอจนเชื่อมต่อได้</string>
++    <string name="join_wifi_before_server_search_help">ปุ่ม Wi-Fi จะค้นหาเซิร์ฟเวอร์เฮดยูนิตในเครือข่าย Wi-Fi ของเครื่องนี้ เครื่องที่ยังไม่ได้ต่อฮอตสปอตของโทรศัพท์จะไม่มีที่ให้ค้นหา การลองจึงจบทันที เมื่อเปิดตัวเลือกนี้ ปุ่มจะขอให้ Android สแกน Wi-Fi รอจนเครื่องเชื่อมต่อ แล้วจึงค้นหา Android เป็นผู้เลือกเครือข่าย: ให้บันทึกฮอตสปอตของโทรศัพท์ในการตั้งค่า Wi-Fi ของเครื่องนี้ก่อน ถ้า Wi-Fi ปิดอยู่ แอปจะขอให้คุณเปิด</string>
++    <string name="join_wifi_timeout">ระยะเวลารอเชื่อมต่อ Wi-Fi</string>
++    <string name="join_wifi_timeout_help">ระยะเวลาที่ปุ่ม Wi-Fi รอให้เครื่องนี้เชื่อมต่อ Wi-Fi ตั้งแต่ 10 ถึง 120 วินาที เมื่อหมดเวลา แอปจะยังค้นหาหนึ่งครั้ง</string>
++    <string name="join_wifi_waiting">กำลังเชื่อมต่อ Wi-Fi ก่อน…</string>
++    <string name="join_wifi_still_waiting">ยังรอ Wi-Fi อยู่…</string>
++    <string name="join_wifi_timed_out">ไม่ได้เชื่อมต่อเครือข่าย Wi-Fi ใดเลย ฮอตสปอตของโทรศัพท์เปิดอยู่หรือไม่</string>
++    <string name="join_wifi_turn_on">Wi-Fi ปิดอยู่ เปิดแล้วการค้นหาจะเริ่มเมื่อเชื่อมต่อได้</string>
+ </resources>
+diff --git a/app/src/main/res/values-tr/strings.xml b/app/src/main/res/values-tr/strings.xml
+index 083ca374..5437d220 100644
+--- a/app/src/main/res/values-tr/strings.xml
++++ b/app/src/main/res/values-tr/strings.xml
+@@ -1852,4 +1852,13 @@
+     <string name="usb_wireless_dongle_help">AAWireless veya Carlinkit gibi bir kablosuz USB adaptörü ile bağlanıyorsanız bunu açın. Open Headunit bir dongle’ı kablodan ayırt edemez, bu yüzden bu seçenek ana ekran etiketlerini kablodan kablosuza çevirir.</string>
+     <string name="home_subtitle_usb_dongle">Kablosuz</string>
+     <string name="home_action_connect_wireless_dongle">Kablosuz bağlan</string>
++    <string name="join_wifi_before_server_search">Aramadan önce WiFi\'ye bağlan</string>
++    <string name="join_wifi_before_server_search_summary">Ünite henüz WiFi\'de değilse WiFi tuşu bağlanmasını bekler.</string>
++    <string name="join_wifi_before_server_search_help">WiFi tuşu Headunit Sunucusunu bu ünitenin WiFi ağında arar. Telefonun erişim noktasına henüz bağlanmamış bir ünitede aranacak ağ yoktur, bu yüzden deneme hemen biterdi. Bu açıkken tuş Android\'den WiFi taraması ister, ünite bağlanana kadar bekler, sonra arar. Ağı Android seçer: telefonun erişim noktasını önce bu ünitenin WiFi ayarlarına kaydedin. WiFi kapalıysa uygulama açmanızı ister.</string>
++    <string name="join_wifi_timeout">WiFi bağlanma zaman aşımı</string>
++    <string name="join_wifi_timeout_help">WiFi tuşunun bu ünitenin WiFi\'ye bağlanmasını ne kadar bekleyeceği, 10 ile 120 saniye arası. Süre dolunca uygulama yine de bir kez arar.</string>
++    <string name="join_wifi_waiting">Önce WiFi\'ye bağlanılıyor…</string>
++    <string name="join_wifi_still_waiting">Hâlâ WiFi bekleniyor…</string>
++    <string name="join_wifi_timed_out">Bir WiFi ağına bağlanılamadı. Telefonun erişim noktası açık mı?</string>
++    <string name="join_wifi_turn_on">WiFi kapalı. Açın; bağlanınca arama başlar.</string>
+ </resources>
+diff --git a/app/src/main/res/values-uk/strings.xml b/app/src/main/res/values-uk/strings.xml
+index a46793f9..ed7dae09 100644
+--- a/app/src/main/res/values-uk/strings.xml
++++ b/app/src/main/res/values-uk/strings.xml
+@@ -1860,4 +1860,13 @@
+     <string name="usb_wireless_dongle_help">Увімкніть, якщо підключаєтеся через бездротовий USB-адаптер, як-от AAWireless або Carlinkit. Open Headunit не може відрізнити адаптер від кабелю, тому цей параметр змінює підписи на головному екрані з кабелю на бездротове з’єднання.</string>
+     <string name="home_subtitle_usb_dongle">Бездротово</string>
+     <string name="home_action_connect_wireless_dongle">Підключити бездротово</string>
++    <string name="join_wifi_before_server_search">Підключатися до Wi-Fi перед пошуком</string>
++    <string name="join_wifi_before_server_search_summary">Якщо пристрій ще не в Wi-Fi, кнопка Wi-Fi чекає на підключення.</string>
++    <string name="join_wifi_before_server_search_help">Кнопка Wi-Fi шукає Headunit Server у мережі Wi-Fi цього пристрою. Якщо пристрій ще не підключився до точки доступу телефона, шукати ніде, і спроба одразу закінчувалася. Коли це ввімкнено, кнопка просить Android пошукати мережі Wi-Fi, чекає на підключення пристрою, а потім шукає. Мережу обирає Android: спершу збережіть точку доступу телефона в налаштуваннях Wi-Fi цього пристрою. Якщо Wi-Fi вимкнено, застосунок попросить його ввімкнути.</string>
++    <string name="join_wifi_timeout">Тайм-аут підключення до Wi-Fi</string>
++    <string name="join_wifi_timeout_help">Скільки кнопка Wi-Fi чекає, поки цей пристрій підключиться до Wi-Fi, від 10 до 120 секунд. Коли час мине, застосунок однаково виконає один пошук.</string>
++    <string name="join_wifi_waiting">Спершу підключення до Wi-Fi…</string>
++    <string name="join_wifi_still_waiting">Досі чекаємо на Wi-Fi…</string>
++    <string name="join_wifi_timed_out">Не вдалося підключитися до Wi-Fi. Чи ввімкнено точку доступу телефона?</string>
++    <string name="join_wifi_turn_on">Wi-Fi вимкнено. Увімкніть його; пошук почнеться після підключення.</string>
+ </resources>
+diff --git a/app/src/main/res/values-vi/strings.xml b/app/src/main/res/values-vi/strings.xml
+index 5763130d..8e71dd2f 100644
+--- a/app/src/main/res/values-vi/strings.xml
++++ b/app/src/main/res/values-vi/strings.xml
+@@ -1859,4 +1859,13 @@
+     <string name="usb_wireless_dongle_help">Bật tùy chọn này nếu bạn kết nối qua bộ chuyển đổi USB không dây như AAWireless hoặc Carlinkit. Open Headunit không thể phân biệt dongle với cáp, nên tùy chọn này đổi nhãn màn hình chính từ cáp sang không dây.</string>
+     <string name="home_subtitle_usb_dongle">Không dây</string>
+     <string name="home_action_connect_wireless_dongle">Kết nối không dây</string>
++    <string name="join_wifi_before_server_search">Kết nối WiFi trước khi tìm</string>
++    <string name="join_wifi_before_server_search_summary">Nếu máy chưa vào WiFi, nút WiFi sẽ chờ đến khi kết nối.</string>
++    <string name="join_wifi_before_server_search_help">Nút WiFi tìm Headunit Server trên mạng WiFi của máy này. Máy chưa vào điểm phát của điện thoại thì không có mạng để tìm, nên lần thử kết thúc ngay. Khi bật mục này, nút sẽ nhờ Android quét WiFi, chờ máy kết nối rồi mới tìm. Android tự chọn mạng: hãy lưu điểm phát của điện thoại trong cài đặt WiFi của máy này trước. Nếu WiFi đang tắt, ứng dụng sẽ nhắc bạn bật lên.</string>
++    <string name="join_wifi_timeout">Thời gian chờ kết nối WiFi</string>
++    <string name="join_wifi_timeout_help">Thời gian nút WiFi chờ máy này kết nối WiFi, từ 10 đến 120 giây. Hết thời gian, ứng dụng vẫn tìm một lần.</string>
++    <string name="join_wifi_waiting">Đang kết nối WiFi trước…</string>
++    <string name="join_wifi_still_waiting">Vẫn đang chờ WiFi…</string>
++    <string name="join_wifi_timed_out">Chưa kết nối được mạng WiFi nào. Điểm phát của điện thoại đã bật chưa?</string>
++    <string name="join_wifi_turn_on">WiFi đang tắt. Hãy bật lên; việc tìm sẽ bắt đầu khi kết nối.</string>
+ </resources>
+diff --git a/app/src/main/res/values-zh-rCN/strings.xml b/app/src/main/res/values-zh-rCN/strings.xml
+index dc4aea87..b41532ef 100644
+--- a/app/src/main/res/values-zh-rCN/strings.xml
++++ b/app/src/main/res/values-zh-rCN/strings.xml
+@@ -1855,4 +1855,13 @@
+     <string name="usb_wireless_dongle_help">如果您通过 AAWireless 或 Carlinkit 等无线 USB 适配器连接，请开启此选项。Open Headunit 无法区分适配器与数据线，开启后会将主屏幕上的文字从有线更改为无线。</string>
+     <string name="home_subtitle_usb_dongle">无线连接</string>
+     <string name="home_action_connect_wireless_dongle">无线连接</string>
++    <string name="join_wifi_before_server_search">搜索前先连接 WLAN</string>
++    <string name="join_wifi_before_server_search_summary">如果本机尚未连接 WLAN，WLAN 按钮会等待连接完成。</string>
++    <string name="join_wifi_before_server_search_help">WLAN 按钮会在本机所在的 WLAN 网络中查找 Headunit Server。本机尚未连上手机热点时无处可搜，之前尝试会立即结束。开启后，按钮会请求 Android 扫描 WLAN，等待本机连上后再搜索。网络由 Android 自行选择：请先在本机的 WLAN 设置中保存手机热点。如果 WLAN 已关闭，应用会提示你打开。</string>
++    <string name="join_wifi_timeout">WLAN 连接超时</string>
++    <string name="join_wifi_timeout_help">WLAN 按钮等待本机连接 WLAN 的时间，10 到 120 秒。超时后应用仍会搜索一次。</string>
++    <string name="join_wifi_waiting">正在先连接 WLAN…</string>
++    <string name="join_wifi_still_waiting">仍在等待 WLAN…</string>
++    <string name="join_wifi_timed_out">未连接到任何 WLAN 网络。手机热点是否已开启？</string>
++    <string name="join_wifi_turn_on">WLAN 已关闭。请打开，连接后即开始搜索。</string>
+ </resources>
+diff --git a/app/src/main/res/values-zh-rTW/strings.xml b/app/src/main/res/values-zh-rTW/strings.xml
+index 88f83021..cefd0ebb 100644
+--- a/app/src/main/res/values-zh-rTW/strings.xml
++++ b/app/src/main/res/values-zh-rTW/strings.xml
+@@ -1855,4 +1855,13 @@
+     <string name="usb_wireless_dongle_help">如果您透過 AAWireless 或 Carlinkit 等無線 USB 轉接器連線，請開啟此選項。Open Headunit 無法區分轉接器與傳輸線，開啟後會將主畫面文字從有線改為無線。</string>
+     <string name="home_subtitle_usb_dongle">無線連線</string>
+     <string name="home_action_connect_wireless_dongle">無線連線</string>
++    <string name="join_wifi_before_server_search">搜尋前先連上 Wi-Fi</string>
++    <string name="join_wifi_before_server_search_summary">如果本機尚未連上 Wi-Fi，Wi-Fi 按鈕會等待連線完成。</string>
++    <string name="join_wifi_before_server_search_help">Wi-Fi 按鈕會在本機所在的 Wi-Fi 網路中尋找 Headunit Server。本機尚未連上手機熱點時無處可搜，先前嘗試會立即結束。開啟後，按鈕會請 Android 掃描 Wi-Fi，等本機連上後再搜尋。網路由 Android 自行選擇：請先在本機的 Wi-Fi 設定中儲存手機熱點。如果 Wi-Fi 已關閉，應用程式會提示你開啟。</string>
++    <string name="join_wifi_timeout">Wi-Fi 連線逾時</string>
++    <string name="join_wifi_timeout_help">Wi-Fi 按鈕等待本機連上 Wi-Fi 的時間，10 到 120 秒。逾時後應用程式仍會搜尋一次。</string>
++    <string name="join_wifi_waiting">正在先連上 Wi-Fi…</string>
++    <string name="join_wifi_still_waiting">仍在等待 Wi-Fi…</string>
++    <string name="join_wifi_timed_out">未連上任何 Wi-Fi 網路。手機熱點是否已開啟？</string>
++    <string name="join_wifi_turn_on">Wi-Fi 已關閉。請開啟，連上後即開始搜尋。</string>
+ </resources>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 4436acb2..e1d9c04b 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1933,4 +1933,13 @@
+     <string name="audio_matching_phase_gradient_hint">Slow playback</string>
+     <string name="audio_matching_option" translatable="false">%1$s\n(%2$s)</string>
+     <string name="audio_matching_description">OHU remains the default. WSOLA aligns overlapping waveforms; Phase Vocoder adjusts spectral phases. Short uses a shorter analysis window. Phase Gradient integrates phase gradients to reconstruct phases. These independent methods add processing latency; their names do not rank sound quality.\n\nNative methods: PCM music. Navigation, voice responses, system sounds and AAC use OHU.\nReconnect to apply. Removed engine preferences reset to OHU.</string>
++    <string name="join_wifi_before_server_search">Join WiFi before searching</string>
++    <string name="join_wifi_before_server_search_summary">If this unit is not on WiFi yet, the WiFi button waits for it to join.</string>
++    <string name="join_wifi_before_server_search_help">The WiFi button looks for the Headunit Server on this unit\'s WiFi network. A unit that has not joined the phone\'s hotspot yet has nothing to search, so the attempt used to end at once. With this on, the button asks Android to scan for WiFi, waits until this unit joins, then searches. Android picks the network: save the phone\'s hotspot in this unit\'s WiFi settings first. If WiFi is off, the app asks you to turn it on.</string>
++    <string name="join_wifi_timeout">WiFi join timeout</string>
++    <string name="join_wifi_timeout_help">How long the WiFi button waits for this unit to join WiFi, from 10 to 120 seconds. When the time runs out, the app searches once anyway.</string>
++    <string name="join_wifi_waiting">Joining WiFi first…</string>
++    <string name="join_wifi_still_waiting">Still waiting for WiFi…</string>
++    <string name="join_wifi_timed_out">No WiFi network joined. Is the phone\'s hotspot on?</string>
++    <string name="join_wifi_turn_on">WiFi is off. Turn it on; the search starts once it connects.</string>
+ </resources>
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicyTest.kt b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicyTest.kt
+new file mode 100644
+index 00000000..d726b804
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicyTest.kt
+@@ -0,0 +1,54 @@
++package com.andrerinas.openheadunit.connection.wifi
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class WifiJoinWaitPolicyTest {
++
++    @Test
++    fun `a unit already on WiFi searches at once`() {
++        assertFalse(WifiJoinWaitPolicy.shouldWait(enabled = true, wifiConnected = true))
++    }
++
++    @Test
++    fun `a unit not on WiFi waits only when the setting is on`() {
++        assertTrue(WifiJoinWaitPolicy.shouldWait(enabled = true, wifiConnected = false))
++        assertFalse(WifiJoinWaitPolicy.shouldWait(enabled = false, wifiConnected = false))
++    }
++
++    @Test
++    fun `the timeout is held to the slider's range`() {
++        assertEquals(WifiJoinWaitPolicy.MIN_TIMEOUT_SEC, WifiJoinWaitPolicy.clampTimeoutSec(0))
++        assertEquals(WifiJoinWaitPolicy.MAX_TIMEOUT_SEC, WifiJoinWaitPolicy.clampTimeoutSec(600))
++        assertEquals(45, WifiJoinWaitPolicy.clampTimeoutSec(45))
++        assertEquals(
++            WifiJoinWaitPolicy.DEFAULT_TIMEOUT_SEC,
++            WifiJoinWaitPolicy.clampTimeoutSec(WifiJoinWaitPolicy.DEFAULT_TIMEOUT_SEC)
++        )
++    }
++
++    @Test
++    fun `the first scan is immediate and the rest only move forward`() {
++        assertEquals(0L, WifiJoinWaitPolicy.scanAtMs(0))
++        (0 until 10).forEach { i ->
++            assertTrue("scan ${i + 1} is not after scan $i", WifiJoinWaitPolicy.delayAfterScanMs(i) > 0L)
++        }
++    }
++
++    @Test
++    fun `the scans fit Android's foreground budget of four in two minutes`() {
++        val times = (0 until 16).map { WifiJoinWaitPolicy.scanAtMs(it) }
++        assertEquals("the opening burst", 4, times.count { it < 60_000L })
++        times.forEach { start ->
++            val inWindow = times.count { it >= start && it < start + WifiJoinWaitPolicy.SCAN_BUDGET_WINDOW_MS }
++            assertTrue("$inWindow scans in the two minutes from ${start}ms", inWindow <= 4)
++        }
++    }
++
++    @Test
++    fun `the fifth scan waits for the first to leave the window`() {
++        assertEquals(WifiJoinWaitPolicy.SCAN_BUDGET_WINDOW_MS, WifiJoinWaitPolicy.scanAtMs(4))
++    }
++}

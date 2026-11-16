@@ -19,3 +19,6 @@ Server, Auto; on by default), the button:
 
 A second press while waiting keeps the wait; the status pill's X ends it.
 Both settings are carried in the settings backup.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
