@@ -1,6 +1,6 @@
-From dfa330f12e7a907062f88f95b807f767ae679564 Mon Sep 17 00:00:00 2001
+From 1d0e3284198bc5376a4aac7af0fb4c1f01bdb6b7 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Mon, 16 Nov 2026 21:22:37 +0000
+Date: Mon, 16 Nov 2026 21:58:10 +0000
 Subject: [PATCH] Headunit Server: join WiFi before the WiFi button's search
 
 The WiFi button's one-shot search probes this unit's own subnet. A unit
@@ -27,63 +27,94 @@ without pressing anything. The WiFi button:
 - searches once the join settles, or once anyway on timeout.
 
 A second press while waiting keeps the wait; the status pill's X ends it.
+
+Automatic connection (Headunit Server, Auto; on by default):
+- a start delay (0-60 s, 15 s) counted down on the home card with
+  Connect now / Cancel; opening settings stops it, leaving restarts it;
+  off, only the WiFi button connects;
+- the card says what the search waits for: the phone's WiFi, a hotspot
+  not in range, another network, "WiFi connected, connecting to the
+  phone", or the phone's head unit server being off (port 5277 refused
+  rather than unanswered);
+- quick retries (1-3 s) after a join or a dropped session instead of
+  the loop's 10 s, still one sweep at a time;
+- the phone's network and address learned from the last session; a
+  refusing gateway that is the known phone skips the subnet sweep;
+- the home screen's "last session" auto-connect no longer dials the
+  phone's last address beside the search;
+- one "Timeline:" line per connection in the log.
 Both settings are carried in the settings backup.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
 ---
- CHANGELOG.md                                  |   1 +
+ CHANGELOG.md                                  |   2 +
  README.md                                     |   1 +
- .../andrerinas/openheadunit/aap/AapService.kt | 125 +++++++++++-
- .../connection/wifi/WifiJoinWaitPolicy.kt     |  55 +++++
- .../connection/wifi/WifiJoinWaiter.kt         | 193 ++++++++++++++++++
- .../wifi/WifiLauncherSharedServices.kt        |   9 +
- .../openheadunit/main/HomeFragment.kt         |  16 +-
- .../openheadunit/main/SettingsFragment.kt     |  40 ++++
- .../openheadunit/main/SettingsPendingCopy.kt  |   6 +
- .../andrerinas/openheadunit/utils/Settings.kt |  11 +
- .../utils/SettingsBackupManager.kt            |   2 +
- app/src/main/res/values-ar/strings.xml        |   9 +
- app/src/main/res/values-cs/strings.xml        |   9 +
- app/src/main/res/values-de/strings.xml        |   9 +
- app/src/main/res/values-es-rES/strings.xml    |   9 +
- app/src/main/res/values-es/strings.xml        |   9 +
- app/src/main/res/values-fr/strings.xml        |   9 +
- app/src/main/res/values-hi/strings.xml        |   9 +
- app/src/main/res/values-hu/strings.xml        |   9 +
- app/src/main/res/values-in/strings.xml        |   9 +
- app/src/main/res/values-it/strings.xml        |   9 +
- app/src/main/res/values-ja/strings.xml        |   9 +
- app/src/main/res/values-ka/strings.xml        |   9 +
- app/src/main/res/values-ko/strings.xml        |   9 +
- app/src/main/res/values-nl/strings.xml        |   9 +
- app/src/main/res/values-pl/strings.xml        |   9 +
- app/src/main/res/values-pt-rBR/strings.xml    |   9 +
- app/src/main/res/values-pt-rPT/strings.xml    |   9 +
- app/src/main/res/values-ro/strings.xml        |   9 +
- app/src/main/res/values-ru/strings.xml        |   9 +
- app/src/main/res/values-th/strings.xml        |   9 +
- app/src/main/res/values-tr/strings.xml        |   9 +
- app/src/main/res/values-uk/strings.xml        |   9 +
- app/src/main/res/values-vi/strings.xml        |   9 +
- app/src/main/res/values-zh-rCN/strings.xml    |   9 +
- app/src/main/res/values-zh-rTW/strings.xml    |   9 +
- app/src/main/res/values/strings.xml           |   9 +
- .../connection/wifi/WifiJoinWaitPolicyTest.kt |  62 ++++++
- 38 files changed, 752 insertions(+), 3 deletions(-)
+ .../andrerinas/openheadunit/aap/AapService.kt | 174 +++++++-
+ .../connection/ConnectionStage.kt             |   9 +
+ .../connection/ConnectionStagePolicy.kt       |  19 +
+ .../connection/ConnectionStageTracker.kt      |   9 +
+ .../connection/wifi/NetworkDiscovery.kt       |  31 +-
+ .../connection/wifi/WifiJoinWaitPolicy.kt     |  55 +++
+ .../connection/wifi/WifiJoinWaiter.kt         | 193 ++++++++
+ .../wifi/WifiLauncherSharedServices.kt        |  18 +
+ .../autoconnect/HeadunitServerAutoConnect.kt  | 412 ++++++++++++++++++
+ .../HeadunitServerAutoConnectPolicy.kt        | 126 ++++++
+ .../openheadunit/main/HomeFragment.kt         |  56 ++-
+ .../openheadunit/main/HomePrimaryPolicy.kt    |   5 +
+ .../openheadunit/main/SettingsFragment.kt     | 105 +++++
+ .../openheadunit/main/SettingsPendingCopy.kt  |  12 +
+ .../openheadunit/main/StatusPillPolicy.kt     |   4 +
+ .../andrerinas/openheadunit/utils/Settings.kt |  41 ++
+ .../utils/SettingsBackupManager.kt            |   4 +
+ app/src/main/res/values-ar/strings.xml        |  13 +
+ app/src/main/res/values-cs/strings.xml        |  13 +
+ app/src/main/res/values-de/strings.xml        |  13 +
+ app/src/main/res/values-es-rES/strings.xml    |  13 +
+ app/src/main/res/values-es/strings.xml        |  13 +
+ app/src/main/res/values-fr/strings.xml        |  13 +
+ app/src/main/res/values-hi/strings.xml        |  13 +
+ app/src/main/res/values-hu/strings.xml        |  13 +
+ app/src/main/res/values-in/strings.xml        |  13 +
+ app/src/main/res/values-it/strings.xml        |  13 +
+ app/src/main/res/values-ja/strings.xml        |  13 +
+ app/src/main/res/values-ka/strings.xml        |  13 +
+ app/src/main/res/values-ko/strings.xml        |  13 +
+ app/src/main/res/values-nl/strings.xml        |  13 +
+ app/src/main/res/values-pl/strings.xml        |  13 +
+ app/src/main/res/values-pt-rBR/strings.xml    |  13 +
+ app/src/main/res/values-pt-rPT/strings.xml    |  13 +
+ app/src/main/res/values-ro/strings.xml        |  13 +
+ app/src/main/res/values-ru/strings.xml        |  13 +
+ app/src/main/res/values-th/strings.xml        |  13 +
+ app/src/main/res/values-tr/strings.xml        |  27 ++
+ app/src/main/res/values-uk/strings.xml        |  13 +
+ app/src/main/res/values-vi/strings.xml        |  13 +
+ app/src/main/res/values-zh-rCN/strings.xml    |  13 +
+ app/src/main/res/values-zh-rTW/strings.xml    |  13 +
+ app/src/main/res/values/strings.xml           |  27 ++
+ .../connection/wifi/WifiJoinWaitPolicyTest.kt |  62 +++
+ .../HeadunitServerAutoConnectPolicyTest.kt    | 105 +++++
+ .../autoconnect/HeadunitServerStagesTest.kt   |  89 ++++
+ 48 files changed, 1888 insertions(+), 10 deletions(-)
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicy.kt
  create mode 100644 app/src/test/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicyTest.kt
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicyTest.kt
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerStagesTest.kt
 
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 097aa07d..b34264ad 100644
+index 097aa07d..2b280b5a 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -5,6 +5,7 @@
+@@ -5,6 +5,8 @@
  - Allow embedding the projection activity, thanks to @codepdbh
  - Feat: Send volume buttons to the phone, and add speed-dependent volume, thanks to @Megalodon-sharky
  - Feat(usb): add wireless dongle display option for home screen
 +- Headunit Server: while the unit is not on WiFi, scan for WiFi instead of searching, and search the moment it joins, at startup and from the WiFi button
++- Headunit Server: automatic connection with a start delay (countdown on the home card, paused while settings are open), quick retries after a join, "WiFi connected, connecting to the phone", a closed head unit server told apart from an absent phone, the phone's network learned, and one timeline line per connection in the log
  
  ### 4.0.0
  - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar
@@ -100,22 +131,39 @@ index 51a26590..b426b4d0 100644
  #### 4. Wireless Helper
  - Our companion app triggers the wireless connection automatically in the background.
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt b/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
-index 3af63e6c..b79e752f 100644
+index 3af63e6c..7cc3a4f6 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
-@@ -125,6 +125,8 @@ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherManager
+@@ -125,6 +125,9 @@ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherManager
  import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
  import com.andrerinas.openheadunit.connection.wifi.WifiLauncherStopSequence
  import com.andrerinas.openheadunit.connection.wifi.WifiJoinKickPolicy
 +import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
 +import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaiter
++import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnect
  import com.andrerinas.openheadunit.connection.wifi.direct.P2pIdentityRotationPolicy
  import com.andrerinas.openheadunit.connection.wifi.direct.StationScanMonitor
  import com.andrerinas.openheadunit.connection.wifi.direct.StationStandDown
-@@ -180,6 +182,10 @@ class AapService : Service() {
+@@ -180,6 +183,26 @@ class AapService : Service() {
      }
  
      private val wifiLauncherManager = WifiLauncherManager(this)
++    /**
++     * Headunit Server's automatic connection: the startup countdown, what the card says while
++     * the search waits, quick retries and the connection timeline. Built on first use, like the
++     * waiter below; stop paths read [huAutoConnectIfBuilt].
++     */
++    private var huAutoConnectIfBuilt: HeadunitServerAutoConnect? = null
++    val huAutoConnect: HeadunitServerAutoConnect
++        get() = huAutoConnectIfBuilt ?: HeadunitServerAutoConnect(
++            context = this,
++            scope = serviceScope,
++            arm = { initWifiModeWithOptionalWait() },
++            disarm = { wifiLauncherManager.stop() },
++            userExited = { userExitedAA },
++            cancelledByUser = { wifiLauncherManager.cancelledByUser },
++        ).also { huAutoConnectIfBuilt = it }
++
 +    /** Built on first use; stop paths read [wifiJoinWaiterIfBuilt] so they never create one. */
 +    private var wifiJoinWaiterIfBuilt: WifiJoinWaiter? = null
 +    private val wifiJoinWaiter: WifiJoinWaiter
@@ -123,7 +171,17 @@ index 3af63e6c..b79e752f 100644
  
      /**
       * Counts this unit's own WiFi scans into the log. Nothing acts on it; it exists so a reporter's
-@@ -2811,6 +2817,114 @@ class AapService : Service() {
+@@ -1302,7 +1325,8 @@ class AapService : Service() {
+ 
+         if (applyBootLoopGuard()) {
+             AppLog.w("AapService: Wireless bring-up paused by the boot-loop guard. USB and the rest of the app are unaffected.")
+-        } else {
++        } else if (!huAutoConnect.onServiceStart()) {
++            // Headunit Server's countdown, or automatic connection off, takes the first search over.
+             initWifiModeWithOptionalWait()
+         }
+         scheduleBootLoopStrikeClear()
+@@ -2811,6 +2835,121 @@ class AapService : Service() {
          }
      }
  
@@ -140,12 +198,16 @@ index 3af63e6c..b79e752f 100644
 +     */
 +    fun parkDiscoveryUntilWifi(): Boolean {
 +        val settings = App.provide(this).settings
++        val onWifi = wifiJoinWaiter.isWifiConnected()
 +        val park = WifiJoinWaitPolicy.shouldParkDiscovery(
 +            isHeadunitServerAuto = settings.wifiConnectionMode == WifiLauncherMode.AUTO,
 +            enabled = settings.joinWifiBeforeServerSearch,
-+            wifiConnected = wifiJoinWaiter.isWifiConnected()
++            wifiConnected = onWifi
 +        )
-+        if (!park) return false
++        if (!park) {
++            if (onWifi) huAutoConnect.onArmedOnWifi()
++            return false
++        }
 +        if (!discoveryParkedForWifi) {
 +            AppLog.i("AapService: not on WiFi; the Headunit Server search waits for a WiFi network")
 +            discoveryParkedForWifi = true
@@ -155,6 +217,7 @@ index 3af63e6c..b79e752f 100644
 +            AppLog.d("AapService: WiFi is off; scans resume once it is switched on")
 +        }
 +        wifiJoinWaiter.start("background search", ::onWifiJoinedForSearch)
++        huAutoConnect.onParkedForWifi()
 +        return true
 +    }
 +
@@ -219,6 +282,7 @@ index 3af63e6c..b79e752f 100644
 +        }
 +        AppLog.i("AapService: joined WiFi; searching for the Headunit Server (loop=$resumeLoop, button=$oneShot)")
 +        ConnectionStageTracker.report(ConnectionStage.SEARCHING)
++        huAutoConnect.onWifiJoined()
 +        // The loop's own first sweep is the button's sweep too: one probe of the server at a time.
 +        when {
 +            resumeLoop -> wifiLauncherManager.startDiscovery(oneShot = false)
@@ -233,20 +297,52 @@ index 3af63e6c..b79e752f 100644
 +        oneShotAwaitingWifi = false
 +        discoveryParkedForWifi = false
 +        wifiJoinWaiterIfBuilt?.stop()
++        huAutoConnectIfBuilt?.stopVisibilityChecks()
 +    }
 +
      private fun cancelAllBtAutoDisconnects() {
          btAutoDisconnectJobs.values.forEach { it.cancel() }
          btAutoDisconnectJobs.clear()
-@@ -3479,6 +3593,7 @@ class AapService : Service() {
+@@ -2977,6 +3116,11 @@ class AapService : Service() {
+ 
+     private fun initWifiModeWithOptionalWait() {
+         if (deferWirelessForUsbHandoff()) return
++        // Headunit Server with automatic connection off: only the WiFi button brings it up.
++        if (!huAutoConnect.armsByItself()) {
++            AppLog.i("AapService: Headunit Server automatic connection is off; not arming wireless by itself")
++            return
++        }
+ 
+         val settings = App.provide(this).settings
+ 
+@@ -3215,6 +3359,7 @@ class AapService : Service() {
+ 
+         if (pause) {
+             wirelessPausedForSettings = true
++            huAutoConnect.onSettingsOpened()
+             releaseParkedHct()
+             // A recreate or a permission prompt can have scheduled one; it must not fire now.
+             settingsRearmJob?.cancel()
+@@ -3229,6 +3374,9 @@ class AapService : Service() {
+         wirelessPausedForSettings = false
+         val mode = App.provide(this).settings.wifiConnectionMode
+         if (mode == WifiLauncherMode.MANUAL) return
++        // Headunit Server's automatic connection starts its countdown again rather than staying
++        // down until the WiFi button, unless a held request (a Save, the QR) re-arms below anyway.
++        if (!settingsQrHold && !wirelessRearmPendingForSettings && huAutoConnect.onSettingsClosed()) return
+ 
+         if (!SettingsScreenPausePolicy.rearmsOnRelease(settingsQrHold, wirelessRearmPendingForSettings)) {
+             AppLog.i(
+@@ -3479,6 +3627,8 @@ class AapService : Service() {
  
      @SuppressLint("WrongConstant")
      override fun onDestroy() {
 +        cancelWifiJoinWaits()
++        huAutoConnectIfBuilt?.destroy()
          closeRetainedHct()
          AppLog.i("AapService destroying... (wakeLock held=${bootWakeLock?.isHeld == true})")
          FloatingButtonManager.removeOverlay(this)
-@@ -3813,6 +3928,14 @@ class AapService : Service() {
+@@ -3813,6 +3963,15 @@ class AapService : Service() {
  
                  AppLog.i("AapService: Force-starting WIFI-Scan from UI")
  
@@ -257,19 +353,196 @@ index 3af63e6c..b79e752f 100644
 +                    ToastUtils.showToast(this, getString(R.string.join_wifi_still_waiting))
 +                    return START_STICKY
 +                }
++                if (mode == WifiLauncherMode.AUTO) huAutoConnect.onWifiButton()
 +
                  // [FIX] Reset exit flags on manual scan start
                  userExitedAA = false
                  userExitCooldownUntil = 0L
-@@ -3822,7 +3945,7 @@ class AapService : Service() {
+@@ -3822,7 +3981,13 @@ class AapService : Service() {
                  )
  
                  if (mode == WifiLauncherMode.AUTO)
 -                    wifiLauncherManager.startDiscovery(oneShot = true)
 +                    searchHeadunitServerOnceOnWifi(settings)
++            }
++            ACTION_HU_AUTO_CONNECT       -> {
++                when (intent?.getStringExtra(EXTRA_HU_AUTO_CONNECT)) {
++                    HU_AUTO_CONNECT_NOW -> huAutoConnect.connectNow()
++                    HU_AUTO_CONNECT_CANCEL -> huAutoConnect.cancelByUser()
++                }
              }
              ACTION_STOP_WIRELESS         -> {
                  stopWirelessForCommand(intent?.getBooleanExtra(EXTRA_SETTINGS_REARM, false) == true)
+@@ -4551,6 +4716,11 @@ class AapService : Service() {
+         const val ACTION_START_WIRELESS_SCAN       = "com.andrerinas.openheadunit.ACTION_START_WIRELESS_SCAN"
+         const val ACTION_STOP_WIRELESS             = "com.andrerinas.openheadunit.ACTION_STOP_WIRELESS"
+         const val ACTION_CANCEL_WIRELESS           = "com.andrerinas.openheadunit.ACTION_CANCEL_WIRELESS"
++        /** The home card's buttons during Headunit Server's startup countdown. */
++        const val ACTION_HU_AUTO_CONNECT           = "com.andrerinas.openheadunit.ACTION_HU_AUTO_CONNECT"
++        const val EXTRA_HU_AUTO_CONNECT            = "hu_auto_connect"
++        const val HU_AUTO_CONNECT_NOW              = "now"
++        const val HU_AUTO_CONNECT_CANCEL           = "cancel"
+         const val ACTION_ROTATE_WIFI_DIRECT_IDENTITY = "com.andrerinas.openheadunit.ACTION_ROTATE_WIFI_DIRECT_IDENTITY"
+         const val ACTION_NATIVE_AA_POKE            = "com.andrerinas.openheadunit.ACTION_NATIVE_AA_POKE"
+         const val ACTION_NATIVE_AA_SWITCH_DEVICE   = "com.andrerinas.openheadunit.ACTION_NATIVE_AA_SWITCH_DEVICE"
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStage.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStage.kt
+index 2c68f897..0b3e73c2 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStage.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStage.kt
+@@ -15,9 +15,18 @@ import com.andrerinas.openheadunit.R
+  */
+ enum class ConnectionStage(val rank: Int, @StringRes val label: Int) {
+     ARMED(10, R.string.stage_armed),
++    // Headunit Server's automatic connection, while the unit is not on the phone's WiFi yet. They
++    // can last as long as the phone is away, so they are listening steps, not progress.
++    WAITING_FOR_WIFI(12, R.string.stage_waiting_for_wifi),
++    PHONE_WIFI_NOT_VISIBLE(12, R.string.stage_phone_wifi_not_visible),
++    OTHER_WIFI(12, R.string.stage_other_wifi),
+     USB_ATTACHED(20, R.string.stage_usb_attached),
+     PREPARING_NETWORK(20, R.string.stage_preparing_network),
+     SEARCHING(25, R.string.stage_searching),
++    // The phone answers on its hotspot but refuses port 5277: Android Auto's head unit server is off.
++    SERVER_CLOSED(26, R.string.stage_server_closed),
++    // Joined the phone's WiFi and dialling it: progress, shown until the quick retries are spent.
++    WIFI_JOINED(27, R.string.stage_wifi_joined),
+     USB_SWITCHING(30, R.string.stage_usb_switching),
+     CREATING_NETWORK(30, R.string.stage_creating_network),
+     WAITING_FOR_PHONE(40, R.string.stage_waiting_for_phone),
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStagePolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStagePolicy.kt
+index 6abf0ddf..c08e8361 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStagePolicy.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStagePolicy.kt
+@@ -19,6 +19,25 @@ object ConnectionStagePolicy {
+      */
+     fun shouldRetreat(current: ConnectionStage?, from: ConnectionStage): Boolean = current == from
+ 
++    /**
++     * Steps Headunit Server's automatic connection may replace with what it knows now, in either
++     * direction: WiFi waits, the join, a closed server. Never a USB step or anything from the
++     * phone answering on: those belong to a bring-up that got further than this can see.
++     */
++    private val diagnosticReplaceable = setOf(
++        ConnectionStage.ARMED,
++        ConnectionStage.WAITING_FOR_WIFI,
++        ConnectionStage.PHONE_WIFI_NOT_VISIBLE,
++        ConnectionStage.OTHER_WIFI,
++        ConnectionStage.PREPARING_NETWORK,
++        ConnectionStage.SEARCHING,
++        ConnectionStage.SERVER_CLOSED,
++        ConnectionStage.WIFI_JOINED,
++        ConnectionStage.WAITING_FOR_PHONE,
++    )
++
++    fun mayShowDiagnostic(current: ConnectionStage?): Boolean = current == null || current in diagnosticReplaceable
++
+     /**
+      * Where the display goes when the unit gives up on its own network (#1147). After a refused
+      * group the pill used to keep "Creating the WiFi network" under "Android Auto is starting…"
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStageTracker.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStageTracker.kt
+index 782bfeb3..61d4a3a4 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStageTracker.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/ConnectionStageTracker.kt
+@@ -49,6 +49,15 @@ object ConnectionStageTracker {
+         _stage.value = null
+     }
+ 
++    /**
++     * What Headunit Server's automatic connection knows right now, replacing the step on show
++     * even when it ranks lower (the unit can lose WiFi after joining it). Ignored once the phone
++     * has answered or over a USB step; see [ConnectionStagePolicy.mayShowDiagnostic].
++     */
++    fun showDiagnostic(stage: ConnectionStage) {
++        _stage.update { current -> if (ConnectionStagePolicy.mayShowDiagnostic(current)) stage else current }
++    }
++
+     /** A step that ended with nothing to show: [from] gives way to [to], and any other stage stays. */
+     fun retreat(from: ConnectionStage, to: ConnectionStage) {
+         if (ConnectionStagePolicy.shouldRetreat(_stage.value, from)) _stage.value = to
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/NetworkDiscovery.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/NetworkDiscovery.kt
+index a9f33c53..3fcc2d01 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/NetworkDiscovery.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/NetworkDiscovery.kt
+@@ -1,5 +1,6 @@
+ package com.andrerinas.openheadunit.connection.wifi
+ 
++import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnectPolicy
+ import android.content.Context
+ import android.net.ConnectivityManager
+ import android.net.wifi.WifiManager
+@@ -95,8 +96,21 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
+          * running scan has to report its own kind or it would silently lose its re-arm.
+          */
+         fun onScanFinished(wasOneShot: Boolean)
++
++        /**
++         * The network's gateway refused port 5277: something is there and nothing listens. From
++         * the scan's thread. Return true to skip the subnet sweep, which only the listener can
++         * judge (on the phone's own hotspot the gateway is the phone).
++         */
++        fun onGatewayRefused(ip: String): Boolean = false
+     }
+ 
++    /** Addresses that refused port 5277 in the running scan. */
++    private val refused5277: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
++
++    /** Set by the gateway phase when the listener says the subnet sweep has nothing to add. */
++    @Volatile private var skipSubnetSweep = false
++
+     /**
+      * One scan, with the disposition that belongs to it. Kept together rather than in an instance
+      * field so a scan can never report the *next* scan's kind: a cancelled scan is replaced while
+@@ -195,6 +209,8 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
+             // Cleared here rather than at the call, so the set belongs to this generation and
+             // the outgoing scan keeps its own dedupe while it winds down.
+             reportedIps.clear()
++            refused5277.clear()
++            skipSubnetSweep = false
+             probeHelperPort = readProbeHelperPort()
+             try {
+                 // 1. Quick Scan: Check likely Gateways first
+@@ -205,6 +221,10 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
+                     AppLog.i("NetworkDiscovery: Gateway found service, skipping subnet scan.")
+                     return@launch
+                 }
++                if (skipSubnetSweep) {
++                    AppLog.i("NetworkDiscovery: the gateway is the phone and refused 5277; skipping the subnet scan")
++                    return@launch
++                }
+ 
+                 // 2. Deep Scan: Check entire Subnet
+                 AppLog.i("NetworkDiscovery: Step 2 - Full Subnet Scan")
+@@ -253,7 +273,8 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
+             // First, and on every API level. The route lookup below needs API 23, and on a phone
+             // hotspot this is the phone itself. mutableSetOf keeps insertion order, so it is
+             // probed first and the 254-address sweep is reached less often.
+-            dhcpGatewaySuspect()?.let { suspects.add(it) }
++            val dhcpGateway = dhcpGatewaySuspect()
++            dhcpGateway?.let { suspects.add(it) }
+ 
+             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                 val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+@@ -285,6 +306,11 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
+                     }
+                 }
+             }
++            // Refused rather than unanswered: the phone is there on its hotspot and Android Auto's
++            // head unit server is not running. Said once per sweep, for the DHCP gateway only.
++            if (!foundAny && dhcpGateway != null && dhcpGateway in refused5277) {
++                skipSubnetSweep = listener.onGatewayRefused(dhcpGateway)
++            }
+         } catch (e: CancellationException) {
+             // Not an error, and swallowing it hid the socket leak below: the scan reported
+             // "Gateway scan error" and carried on into the subnet sweep as if nothing had
+@@ -448,6 +474,9 @@ class NetworkDiscovery(private val context: Context, private val listener: Liste
+                 probesFailed.incrementAndGet()
+                 lastProbeFailure = e.javaClass.simpleName
+             }
++            if (port == 5277 && HeadunitServerAutoConnectPolicy.isRefused(e.javaClass.simpleName, e.message)) {
++                refused5277.add(ip)
++            }
+             null
+         }
+     }
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
 new file mode 100644
 index 00000000..3e312463
@@ -531,7 +804,7 @@ index 00000000..69b15a57
 +    }
 +}
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiLauncherSharedServices.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiLauncherSharedServices.kt
-index 8cae2f2f..a7e1db12 100644
+index 8cae2f2f..57bfc15a 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiLauncherSharedServices.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiLauncherSharedServices.kt
 @@ -194,6 +194,13 @@ class WifiLauncherSharedServices(val service: AapService) {
@@ -548,7 +821,41 @@ index 8cae2f2f..a7e1db12 100644
  
          scanningState.value = true
  
-@@ -298,6 +305,8 @@ class WifiLauncherSharedServices(val service: AapService) {
+@@ -223,6 +230,7 @@ class WifiLauncherSharedServices(val service: AapService) {
+                             5277 -> {
+                                 // Headunit Server detected — reuse the pre-opened socket when possible
+                                 AppLog.i("Auto-connecting to Headunit Server at $ip:$port (reusing socket)")
++                                service.huAutoConnect.onPhoneFound(ip)
+                                 ConnectionStageTracker.report(ConnectionStage.PHONE_ANSWERED)
+                                 service.serviceScope.launch {
+                                     val endpoint = SameEndpointConnectPolicy.endpoint(ip, 5277)
+@@ -251,6 +259,9 @@ class WifiLauncherSharedServices(val service: AapService) {
+                     // The flag comes from the scan that finished, not from the call that built this
+                     // listener: the instance outlives any single request now, so capturing it here would
+                     // pin every later scan to the first caller's choice.
++                    override fun onGatewayRefused(ip: String): Boolean =
++                        service.huAutoConnect.onGatewayRefused(ip)
++
+                     override fun onScanFinished(wasOneShot: Boolean) {
+                         scanningState.value = false
+                         if (wasOneShot) {
+@@ -268,10 +279,15 @@ class WifiLauncherSharedServices(val service: AapService) {
+                         // done safely. The kick must never cancel a live probe to get there: two sweeps
+                         // probing the head unit server at once is what wedges it, so the kick only makes
+                         // the *next* sweep immediate, on the network that has actually arrived.
++                        val fastMs = service.huAutoConnect.nextFastRescanDelayMs()
+                         val delayMs = if (service.rescanWithoutWaiting) {
+                             service.rescanWithoutWaiting = false
+                             AppLog.i("AapService: network changed during the last scan; rescanning immediately")
+                             0L
++                        } else if (fastMs != null) {
++                            // Just joined the phone's WiFi, or a session just dropped: the head unit
++                            // server answers within seconds, so do not wait out the loop's 10 s.
++                            fastMs
+                         } else {
+                             UnresponsivePeerPolicy.rescanDelayMs(commManager.silentPeerFailures)
+                         }
+@@ -298,6 +314,8 @@ class WifiLauncherSharedServices(val service: AapService) {
      }
  
      private fun stopLocalDiscovery() {
@@ -557,20 +864,666 @@ index 8cae2f2f..a7e1db12 100644
          if (localDiscovery == null)
              return
  
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
+new file mode 100644
+index 00000000..06d5deb9
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
+@@ -0,0 +1,412 @@
++package com.andrerinas.openheadunit.connection.wifi.autoconnect
++
++import android.annotation.SuppressLint
++import android.content.Context
++import android.net.wifi.WifiManager
++import android.os.SystemClock
++import android.widget.Toast
++import com.andrerinas.openheadunit.App
++import com.andrerinas.openheadunit.R
++import com.andrerinas.openheadunit.connection.CommManager
++import com.andrerinas.openheadunit.connection.ConnectionStage
++import com.andrerinas.openheadunit.connection.ConnectionStageTracker
++import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
++import com.andrerinas.openheadunit.utils.AppLog
++import com.andrerinas.openheadunit.utils.Settings
++import com.andrerinas.openheadunit.utils.ToastUtils
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.asStateFlow
++import kotlinx.coroutines.launch
++
++/**
++ * Headunit Server's automatic connection, the part the driver sees: a countdown before the first
++ * search, what the card says while the unit waits for the phone's WiFi, quick retries once it has
++ * joined, a closed head unit server told apart from an absent phone, the phone's network learned
++ * from the last session, and one timeline line per connection in the log.
++ *
++ * The search itself stays where it was (the launcher, the discovery loop and its WiFi parking in
++ * AapService); this decides when it starts and says what it is doing. Main thread only.
++ *
++ * @param arm brings the wireless search up (AapService.initWifiModeWithOptionalWait).
++ * @param disarm takes it down for the countdown (the launcher's stop).
++ * @param userExited the driver left Android Auto, so nothing starts again by itself.
++ * @param cancelledByUser the status pill's X stopped the wireless bring-up.
++ */
++class HeadunitServerAutoConnect(
++    context: Context,
++    private val scope: CoroutineScope,
++    private val arm: () -> Unit,
++    private val disarm: () -> Unit,
++    private val userExited: () -> Boolean,
++    private val cancelledByUser: () -> Boolean,
++) {
++
++    companion object {
++        private val _countdown = MutableStateFlow<Int?>(null)
++
++        /** Seconds left before the first search, or null when no countdown runs. For the home card. */
++        val countdown: StateFlow<Int?> = _countdown.asStateFlow()
++    }
++
++    private val context = context.applicationContext
++    private val settings: Settings get() = App.provide(context).settings
++    private val commManager: CommManager get() = App.provide(context).commManager
++    private val wifi = this.context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
++
++    private var countdownJob: Job? = null
++    private var visibilityJob: Job? = null
++    private var stateJob: Job? = null
++    /** The card's Cancel during the countdown: nothing starts by itself until the WiFi button. */
++    private var cancelledCountdown = false
++    private var fastRescanIndex = -1
++    private var serverClosedToldThisRun = false
++    private var lastFoundIp: String? = null
++
++    // Timeline marks, elapsed realtime; 0 means not reached.
++    private var tStart = SystemClock.elapsedRealtime()
++    private var tSearch = 0L
++    private var tWifi = 0L
++    private var wifiWasUp = false
++    private var tPhone = 0L
++    private var tHandshake = 0L
++    private var timelineLogged = false
++
++    private val isAuto: Boolean get() = settings.wifiConnectionMode == WifiLauncherMode.AUTO
++    private val sessionLive: Boolean get() = commManager.isConnected
++
++    /** Whether the service brings the search up by itself; see [HeadunitServerAutoConnectPolicy.armsByItself]. */
++    fun armsByItself(): Boolean = HeadunitServerAutoConnectPolicy.armsByItself(isAuto, settings.headunitServerAutoConnect)
++
++    /**
++     * The service started. Watches the connection for the timeline and the phone's network, and
++     * returns true when it takes the first search over: a countdown, or automatic connection off.
++     */
++    fun onServiceStart(): Boolean {
++        watchConnection()
++        resetTimeline()
++        if (!isAuto) return false
++        if (!settings.headunitServerAutoConnect) {
++            AppLog.i("HuAutoConnect: automatic connection is off; the WiFi button connects")
++            return true
++        }
++        if (beginCountdownIfWanted("startup")) return true
++        tSearch = SystemClock.elapsedRealtime()
++        return false
++    }
++
++    /** Counts down if the settings ask for it, and returns whether it did. */
++    private fun beginCountdownIfWanted(reason: String): Boolean {
++        val delaySec = settings.headunitServerStartDelaySec
++        if (!HeadunitServerAutoConnectPolicy.countsDown(isAuto, settings.headunitServerAutoConnect, delaySec, sessionLive)) {
++            return false
++        }
++        if (countdownJob?.isActive == true) {
++            AppLog.d("HuAutoConnect: countdown already running ($reason)")
++            return true
++        }
++        AppLog.i("HuAutoConnect: searching for the phone in ${delaySec}s ($reason)")
++        cancelledCountdown = false
++        disarm()
++        ConnectionStageTracker.endAttempt()
++        countdownJob = scope.launch {
++            for (left in delaySec downTo 1) {
++                _countdown.value = left
++                delay(1_000L)
++            }
++            _countdown.value = null
++            countdownJob = null
++            startSearch("countdown over")
++        }
++        return true
++    }
++
++    private fun startSearch(reason: String) {
++        if (sessionLive) return
++        AppLog.i("HuAutoConnect: starting the Headunit Server search ($reason)")
++        tSearch = SystemClock.elapsedRealtime()
++        serverClosedToldThisRun = false
++        arm()
++    }
++
++    /** The card's "Connect now": skip what is left of the countdown. */
++    fun connectNow() {
++        if (countdownJob?.isActive != true) return
++        stopCountdown()
++        cancelledCountdown = false
++        startSearch("connect now")
++    }
++
++    /** The card's Cancel during the countdown. Nothing starts by itself until the WiFi button. */
++    fun cancelByUser() {
++        if (countdownJob?.isActive != true) return
++        AppLog.i("HuAutoConnect: countdown cancelled; the WiFi button connects")
++        stopCountdown()
++        cancelledCountdown = true
++    }
++
++    /** The WiFi button was pressed: it starts the search itself, so the countdown has no more to do. */
++    fun onWifiButton() {
++        cancelledCountdown = false
++        if (countdownJob?.isActive == true) {
++            AppLog.i("HuAutoConnect: the WiFi button ends the countdown")
++            stopCountdown()
++        }
++        if (tSearch == 0L) tSearch = SystemClock.elapsedRealtime()
++        serverClosedToldThisRun = false
++    }
++
++    private fun stopCountdown() {
++        countdownJob?.cancel()
++        countdownJob = null
++        _countdown.value = null
++    }
++
++    /** The settings screen opened: the countdown waits for it to close. The stack itself stops in AapService. */
++    fun onSettingsOpened() {
++        if (countdownJob?.isActive == true) {
++            AppLog.i("HuAutoConnect: the settings screen is open; the countdown starts again when it closes")
++            stopCountdown()
++        }
++        stopVisibilityChecks()
++    }
++
++    /**
++     * The settings screen closed. Returns true when this took the re-arm over: the countdown
++     * starts again from the top, or the search starts at once when the delay is zero.
++     */
++    fun onSettingsClosed(): Boolean {
++        val restart = HeadunitServerAutoConnectPolicy.restartsAfterSettings(
++            isHeadunitServerAuto = isAuto,
++            autoConnect = settings.headunitServerAutoConnect,
++            cancelledByUser = cancelledCountdown || cancelledByUser(),
++            userExited = userExited(),
++            sessionLive = sessionLive,
++        )
++        if (!restart) return false
++        if (!beginCountdownIfWanted("settings closed")) startSearch("settings closed")
++        return true
++    }
++
++    // --- While the search waits for WiFi -------------------------------------------------------
++
++    /** The search loop parked because this unit is not on WiFi. */
++    fun onParkedForWifi() {
++        if (!isAuto) return
++        ConnectionStageTracker.showDiagnostic(ConnectionStage.WAITING_FOR_WIFI)
++        if (visibilityJob?.isActive == true) return
++        val phoneSsid = settings.headunitServerPhoneSsid
++        if (phoneSsid.isBlank()) return
++        visibilityJob = scope.launch {
++            delay(HeadunitServerAutoConnectPolicy.NOT_VISIBLE_AFTER_MS)
++            while (true) {
++                when (HeadunitServerAutoConnectPolicy.phoneWifiVisible(phoneSsid, visibleSsids())) {
++                    false -> {
++                        if (ConnectionStageTracker.stage.value != ConnectionStage.PHONE_WIFI_NOT_VISIBLE) {
++                            AppLog.w("HuAutoConnect: the phone's hotspot \"$phoneSsid\" is not in the scan results")
++                        }
++                        ConnectionStageTracker.showDiagnostic(ConnectionStage.PHONE_WIFI_NOT_VISIBLE)
++                    }
++                    true -> ConnectionStageTracker.showDiagnostic(ConnectionStage.WAITING_FOR_WIFI)
++                    null -> {}
++                }
++                delay(HeadunitServerAutoConnectPolicy.VISIBILITY_CHECK_INTERVAL_MS)
++            }
++        }
++    }
++
++    /** The search is no longer waiting for WiFi: it found it, or it stopped. */
++    fun stopVisibilityChecks() {
++        visibilityJob?.cancel()
++        visibilityJob = null
++    }
++
++    /**
++     * This unit joined WiFi while the search waited. The card says so, and the next sweeps come
++     * quickly instead of every 10 s.
++     */
++    fun onWifiJoined() {
++        stopVisibilityChecks()
++        if (tWifi == 0L) tWifi = SystemClock.elapsedRealtime()
++        if (!isAuto) return
++        val phoneSsid = settings.headunitServerPhoneSsid
++        val current = currentSsid()
++        if (HeadunitServerAutoConnectPolicy.isOtherNetwork(phoneSsid, current)) {
++            AppLog.w("HuAutoConnect: joined \"$current\", not the phone's \"$phoneSsid\"; searching it anyway")
++            ConnectionStageTracker.showDiagnostic(ConnectionStage.OTHER_WIFI)
++        } else {
++            ConnectionStageTracker.showDiagnostic(ConnectionStage.WIFI_JOINED)
++        }
++        startFastRescans("WiFi joined")
++    }
++
++    private fun startFastRescans(reason: String) {
++        fastRescanIndex = 0
++        AppLog.i("HuAutoConnect: quick retries for the phone ($reason)")
++    }
++
++    /**
++     * Asked by the discovery loop for the gap before its next sweep: a quick one while the retries
++     * last, else null for the loop's own. When they run out the card goes back to searching.
++     */
++    fun nextFastRescanDelayMs(): Long? {
++        if (fastRescanIndex < 0) return null
++        val delayMs = HeadunitServerAutoConnectPolicy.fastRescanDelayMs(fastRescanIndex)
++        if (delayMs == null) {
++            fastRescanIndex = -1
++            AppLog.i("HuAutoConnect: quick retries spent; back to the loop's own pace")
++            ConnectionStageTracker.retreat(ConnectionStage.WIFI_JOINED, ConnectionStage.SEARCHING)
++            return null
++        }
++        fastRescanIndex++
++        return delayMs
++    }
++
++    /**
++     * The gateway refused port 5277. From any thread. Returns whether the sweep may skip the rest
++     * of the subnet, which only holds when the gateway is the phone learned from the last session.
++     */
++    fun onGatewayRefused(ip: String): Boolean {
++        val skip = HeadunitServerAutoConnectPolicy.skipsSubnetSweep(ip, settings.headunitServerPhoneIp)
++        scope.launch {
++            if (!isAuto || sessionLive) return@launch
++            ConnectionStageTracker.showDiagnostic(ConnectionStage.SERVER_CLOSED)
++            if (!serverClosedToldThisRun) {
++                serverClosedToldThisRun = true
++                AppLog.w("HuAutoConnect: $ip refuses port 5277: Android Auto's head unit server is not running on the phone")
++                ToastUtils.showToast(context, context.getString(R.string.hu_server_closed_toast), Toast.LENGTH_LONG, force = true)
++            }
++        }
++        return skip
++    }
++
++    /** The discovery found the head unit server. From the main thread. */
++    fun onPhoneFound(ip: String) {
++        lastFoundIp = ip
++        if (tPhone == 0L) tPhone = SystemClock.elapsedRealtime()
++        fastRescanIndex = -1
++    }
++
++    // --- The session: timeline and the phone's network -----------------------------------------
++
++    private fun watchConnection() {
++        if (stateJob?.isActive == true) return
++        stateJob = scope.launch {
++            commManager.connectionState.collect { state ->
++                when (state) {
++                    is CommManager.ConnectionState.HandshakeComplete -> onHandshake()
++                    is CommManager.ConnectionState.TransportStarted -> onProjection()
++                    is CommManager.ConnectionState.Disconnected -> onDisconnected()
++                    else -> {}
++                }
++            }
++        }
++    }
++
++    private fun onHandshake() {
++        if (tHandshake == 0L) tHandshake = SystemClock.elapsedRealtime()
++        stopCountdown()
++        stopVisibilityChecks()
++        fastRescanIndex = -1
++        // Only a session this search found: Self Mode and a typed address are sockets too.
++        val ip = lastFoundIp ?: return
++        lastFoundIp = null
++        if (!isAuto || !commManager.isWirelessSession) return
++        val ssid = HeadunitServerAutoConnectPolicy.cleanSsid(currentSsid())
++        if (ssid != null && ssid != settings.headunitServerPhoneSsid) {
++            AppLog.i("HuAutoConnect: learned the phone's network \"$ssid\"")
++            settings.headunitServerPhoneSsid = ssid
++        }
++        if (ip != settings.headunitServerPhoneIp) settings.headunitServerPhoneIp = ip
++    }
++
++    private fun onProjection() {
++        if (timelineLogged || !isAuto) return
++        timelineLogged = true
++        val now = SystemClock.elapsedRealtime()
++        val search = tSearch.takeIf { it > 0 }
++        val wifiAt = tWifi.takeIf { it > 0 }
++        val phoneAt = tPhone.takeIf { it > 0 }
++        val handshakeAt = tHandshake.takeIf { it > 0 }
++        val steps = listOf(
++            HeadunitServerAutoConnectPolicy.Step("start->search", search?.let { it - tStart }),
++            HeadunitServerAutoConnectPolicy.Step(if (wifiWasUp) "WiFi (already up)" else "WiFi",
++                if (search != null && wifiAt != null) (wifiAt - search).coerceAtLeast(0) else null),
++            HeadunitServerAutoConnectPolicy.Step("phone",
++                phoneAt?.let { it - (wifiAt ?: search ?: tStart) }?.coerceAtLeast(0)),
++            HeadunitServerAutoConnectPolicy.Step("handshake", handshakeAt?.let { it - (phoneAt ?: tStart) }?.coerceAtLeast(0)),
++            HeadunitServerAutoConnectPolicy.Step("projection", now - (handshakeAt ?: tStart)),
++        )
++        AppLog.i("HuAutoConnect: " + HeadunitServerAutoConnectPolicy.formatTimeline(steps, networkDetail()))
++    }
++
++    private fun onDisconnected() {
++        if (tHandshake == 0L) return
++        if (!isAuto) {
++            resetTimeline()
++            return
++        }
++        // A session that dropped: the next timeline starts now, and the retries come quickly
++        // while the phone's network is still up.
++        resetTimeline()
++        tSearch = SystemClock.elapsedRealtime()
++        startFastRescans("session ended")
++    }
++
++    private fun resetTimeline() {
++        tStart = SystemClock.elapsedRealtime()
++        tSearch = 0L
++        tPhone = 0L
++        tHandshake = 0L
++        timelineLogged = false
++        wifiWasUp = false
++        tWifi = 0L
++    }
++
++    /** The search armed with WiFi already up, so the timeline has no join to wait for. */
++    fun onArmedOnWifi() {
++        if (tWifi == 0L) {
++            tWifi = SystemClock.elapsedRealtime()
++            wifiWasUp = true
++        }
++    }
++
++    fun destroy() {
++        stopCountdown()
++        stopVisibilityChecks()
++        stateJob?.cancel()
++        stateJob = null
++    }
++
++    // --- WiFi facts ------------------------------------------------------------------------------
++
++    @Suppress("DEPRECATION")
++    @SuppressLint("MissingPermission")
++    private fun currentSsid(): String? = try {
++        HeadunitServerAutoConnectPolicy.cleanSsid(wifi?.connectionInfo?.ssid)
++    } catch (e: Exception) {
++        null
++    }
++
++    @SuppressLint("MissingPermission")
++    private fun visibleSsids(): List<String?>? = try {
++        @Suppress("DEPRECATION")
++        wifi?.scanResults?.map { it.SSID }
++    } catch (e: Exception) {
++        null
++    }
++
++    @Suppress("DEPRECATION")
++    @SuppressLint("MissingPermission")
++    private fun networkDetail(): String? = try {
++        val info = wifi?.connectionInfo
++        val ssid = HeadunitServerAutoConnectPolicy.cleanSsid(info?.ssid)
++        val freq = info?.frequency?.takeIf { it > 0 }
++        listOfNotNull(ssid?.let { "network=$it" }, freq?.let { "$it MHz" }).joinToString(", ").ifBlank { null }
++    } catch (e: Exception) {
++        null
++    }
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicy.kt
+new file mode 100644
+index 00000000..e82cab8b
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicy.kt
+@@ -0,0 +1,126 @@
++package com.andrerinas.openheadunit.connection.wifi.autoconnect
++
++/**
++ * The decisions behind Headunit Server's automatic connection: the startup countdown, the quick
++ * retries after a WiFi join, and the diagnostics the home card shows while it waits.
++ *
++ * Pure, so every rule is a unit test rather than a car.
++ */
++object HeadunitServerAutoConnectPolicy {
++
++    const val MIN_START_DELAY_SEC = 0
++    const val MAX_START_DELAY_SEC = 60
++    const val DEFAULT_START_DELAY_SEC = 15
++    const val START_DELAY_STEP_SEC = 5
++
++    /** How long the phone's hotspot may stay out of the scan results before the card says so. */
++    const val NOT_VISIBLE_AFTER_MS = 20_000L
++
++    /** How often that is checked while the search waits for WiFi. */
++    const val VISIBILITY_CHECK_INTERVAL_MS = 10_000L
++
++    /**
++     * Gaps before the sweeps that follow a WiFi join or a dropped session, instead of the loop's
++     * usual 10 s. Android Auto's head unit server can take a moment to answer once the phone's
++     * hotspot has a client, and a 10 s wait there is most of the delay a driver sees. Short and
++     * few: each sweep still runs one at a time, so the server is never probed twice at once.
++     */
++    private val FAST_RESCAN_DELAYS_MS = longArrayOf(1_000L, 1_000L, 2_000L, 2_000L, 3_000L)
++
++    fun clampStartDelaySec(seconds: Int): Int = seconds.coerceIn(MIN_START_DELAY_SEC, MAX_START_DELAY_SEC)
++
++    /**
++     * Whether the service counts down before it starts searching. Only Headunit Server's Auto
++     * mode, only with automatic connection on, and never over a session that is already up.
++     */
++    fun countsDown(isHeadunitServerAuto: Boolean, autoConnect: Boolean, delaySec: Int, sessionLive: Boolean): Boolean =
++        isHeadunitServerAuto && autoConnect && delaySec > 0 && !sessionLive
++
++    /**
++     * Whether the service brings the search up by itself (at startup, after the countdown, after a
++     * settings visit). With automatic connection off only the WiFi button does.
++     */
++    fun armsByItself(isHeadunitServerAuto: Boolean, autoConnect: Boolean): Boolean =
++        !isHeadunitServerAuto || autoConnect
++
++    /**
++     * Whether closing the settings screen starts the countdown again. Not after the driver
++     * cancelled or left Android Auto: both mean "not now", and the WiFi button is the way back.
++     */
++    fun restartsAfterSettings(
++        isHeadunitServerAuto: Boolean,
++        autoConnect: Boolean,
++        cancelledByUser: Boolean,
++        userExited: Boolean,
++        sessionLive: Boolean,
++    ): Boolean = isHeadunitServerAuto && autoConnect && !cancelledByUser && !userExited && !sessionLive
++
++    /** The gap before quick retry [index] (from zero), or null once the quick retries are spent. */
++    fun fastRescanDelayMs(index: Int): Long? = FAST_RESCAN_DELAYS_MS.getOrNull(index)
++
++    val fastRescanCount: Int get() = FAST_RESCAN_DELAYS_MS.size
++
++    /**
++     * An SSID as WifiInfo or a scan result gives it, without the quotes, or null when Android
++     * withheld it: it does without location access, and says `<unknown ssid>`.
++     */
++    fun cleanSsid(raw: String?): String? {
++        val s = raw?.trim()?.removeSurrounding("\"")?.trim() ?: return null
++        if (s.isEmpty() || s.equals("<unknown ssid>", ignoreCase = true) || s == "0x") return null
++        return s
++    }
++
++    /**
++     * Whether this unit joined a network that is not the phone's. Unknown on either side means
++     * no verdict, so a unit without location access never hears it.
++     */
++    fun isOtherNetwork(phoneSsid: String?, currentSsid: String?): Boolean {
++        val phone = cleanSsid(phoneSsid) ?: return false
++        val current = cleanSsid(currentSsid) ?: return false
++        return phone != current
++    }
++
++    /**
++     * Whether the phone's hotspot is in the latest scan results: true, false, or null when that
++     * cannot be told. An empty list is no answer either: without location access Android returns
++     * nothing at all rather than a list without the phone.
++     */
++    fun phoneWifiVisible(phoneSsid: String?, visibleSsids: List<String?>?): Boolean? {
++        val phone = cleanSsid(phoneSsid) ?: return null
++        val seen = visibleSsids?.mapNotNull { cleanSsid(it) }
++        if (seen.isNullOrEmpty()) return null
++        return phone in seen
++    }
++
++    /**
++     * Whether a failed dial to port 5277 was refused, as opposed to unanswered. Refused means
++     * something is at that address and nothing listens on the port: on the phone's own hotspot,
++     * the phone is there and Android Auto's head unit server is not running.
++     */
++    fun isRefused(exceptionClass: String?, message: String?): Boolean {
++        if (exceptionClass == "ConnectException" || exceptionClass == "java.net.ConnectException") {
++            val m = message.orEmpty()
++            return m.contains("ECONNREFUSED", ignoreCase = true) || m.contains("refused", ignoreCase = true)
++        }
++        return false
++    }
++
++    /**
++     * Whether a sweep may skip the 254 addresses after the gateway refused. Only when the gateway
++     * is the phone itself, which is learned from the last session: on a shared network the
++     * gateway is a router, and refusing says nothing about where the phone is.
++     */
++    fun skipsSubnetSweep(refusedGatewayIp: String?, knownPhoneIp: String?): Boolean =
++        !refusedGatewayIp.isNullOrBlank() && refusedGatewayIp == knownPhoneIp
++
++    /** One timeline step: a label and the seconds it took, or null for a step that was skipped. */
++    data class Step(val label: String, val ms: Long?)
++
++    /** The single line a connection's timeline is logged as. */
++    fun formatTimeline(steps: List<Step>, detail: String?): String {
++        val body = steps.joinToString(" -> ") { step ->
++            if (step.ms == null) "${step.label} -" else "${step.label} %.1fs".format(java.util.Locale.ROOT, step.ms / 1000.0)
++        }
++        return if (detail.isNullOrBlank()) "Timeline: $body" else "Timeline: $body ($detail)"
++    }
++}
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
-index 4a029c44..372e7413 100644
+index 4a029c44..1f6950df 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
-@@ -78,6 +78,8 @@ import com.andrerinas.openheadunit.connection.usb.UsbPermissionAskPolicy
+@@ -78,6 +78,9 @@ import com.andrerinas.openheadunit.connection.usb.UsbPermissionAskPolicy
  import com.andrerinas.openheadunit.connection.usb.UsbPermissionAsks
  import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
  import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
 +import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
 +import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaiter
++import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnect
  import com.andrerinas.openheadunit.connection.wifi.WirelessSelectionPolicy
  import kotlinx.coroutines.withContext
  import kotlinx.coroutines.delay
-@@ -1931,10 +1933,20 @@ class HomeFragment : Fragment() {
+@@ -296,6 +299,13 @@ class HomeFragment : Fragment() {
+             }
+         }
+ 
++        // Headunit Server's startup countdown runs in the service; the card shows it as its own.
++        viewLifecycleOwner.lifecycleScope.launch {
++            repeatOnLifecycle(Lifecycle.State.STARTED) {
++                HeadunitServerAutoConnect.countdown.collect { renderHome() }
++            }
++        }
++
+         // The card and the tiles tell the bring-up now, so they follow the tracker the pill reads.
+         viewLifecycleOwner.lifecycleScope.launch {
+             repeatOnLifecycle(Lifecycle.State.STARTED) {
+@@ -425,6 +435,15 @@ class HomeFragment : Fragment() {
+         }
+     }
+ 
++    /** The card's buttons during Headunit Server's startup countdown, which the service owns. */
++    private fun sendHuAutoConnect(what: String) {
++        val ctx = context ?: return
++        ContextCompat.startForegroundService(ctx, Intent(ctx, AapService::class.java).apply {
++            action = AapService.ACTION_HU_AUTO_CONNECT
++            putExtra(AapService.EXTRA_HU_AUTO_CONNECT, what)
++        })
++    }
++
+     private fun cancelAutoConnectCountdown() {
+         autoConnectCancelled = true
+         reconnectCountdown?.cancel()
+@@ -436,6 +455,7 @@ class HomeFragment : Fragment() {
+      * is running, so a later bring-up is never blocked by an old cancel.
+      */
+     fun stopAutoConnectCountdown() {
++        if (HeadunitServerAutoConnect.countdown.value != null) sendHuAutoConnect(AapService.HU_AUTO_CONNECT_CANCEL)
+         if (reconnectCountdown?.isActive != true) return
+         AppLog.i("HomeFragment: auto-connect countdown stopped by the bring-up's cancel")
+         cancelAutoConnectCountdown()
+@@ -453,7 +473,8 @@ class HomeFragment : Fragment() {
+                 lastConnection = HomeUiHelper.lastConnection(appSettings),
+                 usbPhoneDetected = usbPhone != null,
+                 sessionActive = sessionLive(),
+-                reconnectTarget = reconnectTarget,
++                reconnectTarget = reconnectTarget
++                    ?: HomePrimaryPolicy.Connection.WIFI.takeIf { HeadunitServerAutoConnect.countdown.value != null },
+                 wifiScanning = AapService.scanningState.value,
+                 sessionConnection = transportConnection().takeIf { sessionLive() },
+                 stage = shownStage(),
+@@ -474,7 +495,9 @@ class HomeFragment : Fragment() {
+         )
+         HomeUiHelper.applyBar(ctx, root, appSettings, barConnections, palette, decision.tiles)
+         HomeUiHelper.applyPrimaryCard(
+-            ctx, root, appSettings, decision, usbPhone?.let { phoneName(it) }, reconnectSecondsLeft, palette,
++            ctx, root, appSettings, decision, usbPhone?.let { phoneName(it) },
++            if (reconnectTarget != null) reconnectSecondsLeft else HeadunitServerAutoConnect.countdown.value ?: 0,
++            palette,
+             networkLine = ConnectionStageTracker.network.value?.let { networkText(it) }
+         )
+         HomeUiHelper.fitDriverBar(root, appSettings.homeButtonScalePercent)
+@@ -555,7 +578,8 @@ class HomeFragment : Fragment() {
+         // (HomePrimaryPolicy.homeTellsBringUp): the card then shows the listening step with its own
+         // Cancel, which is the one that stops the bring-up.
+         if (decision?.status == HomePrimaryPolicy.Status.RECONNECTING) {
+-            cancelAutoConnectCountdown()
++            if (reconnectCountdown?.isActive == true) cancelAutoConnectCountdown()
++            else sendHuAutoConnect(AapService.HU_AUTO_CONNECT_CANCEL)
+         } else {
+             (activity as? MainActivity)?.cancelBringUp("home Cancel")
+         }
+@@ -1695,7 +1719,13 @@ class HomeFragment : Fragment() {
+ 
+         return when (connectionType) {
+             Settings.CONNECTION_TYPE_WIFI -> {
+-                if (appSettings.wifiConnectionMode == WifiLauncherMode.AUTO) {
++                if (appSettings.wifiConnectionMode == WifiLauncherMode.AUTO && appSettings.headunitServerAutoConnect) {
++                    // The service's own search finds the phone; dialling its last address as well
++                    // would be a second connection to the head unit server, which binds to the
++                    // first one it accepts and is deaf to the rest.
++                    AppLog.i("Auto-connect: Headunit Server automatic connection finds the phone itself; not dialling the last address")
++                    false
++                } else if (appSettings.wifiConnectionMode == WifiLauncherMode.AUTO) {
+                     val ip = appSettings.lastConnectionIp
+                     if (ip.isNotEmpty()) {
+                         AppLog.i("Auto-connect: Attempting WiFi connection to $ip")
+@@ -1796,7 +1826,9 @@ class HomeFragment : Fragment() {
+         when (decision.status) {
+             HomePrimaryPolicy.Status.ACTIVE_SESSION -> openProjection()
+             // Ends the wait; the auto-connect that was counting down starts right away.
+-            HomePrimaryPolicy.Status.RECONNECTING -> reconnectCountdown?.cancel()
++            HomePrimaryPolicy.Status.RECONNECTING ->
++                if (reconnectCountdown?.isActive == true) reconnectCountdown?.cancel()
++                else sendHuAutoConnect(AapService.HU_AUTO_CONNECT_NOW)
+             else -> when (decision.primary) {
+                 HomePrimaryPolicy.Connection.USB -> onUsbClicked()
+                 HomePrimaryPolicy.Connection.WIFI -> onWifiClicked()
+@@ -1931,10 +1963,20 @@ class HomeFragment : Fragment() {
                  } else if (AapService.scanningState.value) {
                      ToastUtils.showToast(requireContext(), getString(R.string.already_scanning), Toast.LENGTH_SHORT)
                  } else {
@@ -593,37 +1546,58 @@ index 4a029c44..372e7413 100644
                      )
                      val intent = Intent(requireContext(), AapService::class.java).apply {
                          action = AapService.ACTION_START_WIRELESS_SCAN
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomePrimaryPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomePrimaryPolicy.kt
+index c32f0362..9fc08ac1 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/HomePrimaryPolicy.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomePrimaryPolicy.kt
+@@ -75,6 +75,11 @@ object HomePrimaryPolicy {
+         ConnectionStage.SEARCHING,
+         // Any USB device reports it, a flash drive included, so it is no promise of a phone.
+         ConnectionStage.USB_ATTACHED,
++        // Headunit Server waiting for the phone's WiFi, or for its server: as long as the phone is away.
++        ConnectionStage.WAITING_FOR_WIFI,
++        ConnectionStage.PHONE_WIFI_NOT_VISIBLE,
++        ConnectionStage.OTHER_WIFI,
++        ConnectionStage.SERVER_CLOSED,
+     )
+ 
+     private val usbStages = setOf(ConnectionStage.USB_ATTACHED, ConnectionStage.USB_SWITCHING)
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
-index 5e5191f7..6caff87c 100644
+index 5e5191f7..a8f4bb50 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
-@@ -101,6 +101,7 @@ import androidx.lifecycle.Lifecycle
+@@ -101,6 +101,8 @@ import androidx.lifecycle.Lifecycle
  import androidx.lifecycle.repeatOnLifecycle
  import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
  import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeStrategy
 +import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
++import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnectPolicy
  import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
  import com.andrerinas.openheadunit.connection.wifi.WirelessRearmPolicy
  import java.io.File
-@@ -227,6 +228,8 @@ class SettingsFragment : Fragment() {
+@@ -227,6 +229,10 @@ class SettingsFragment : Fragment() {
      private var pendingAutoEnableHotspot by pending::autoEnableHotspot
      private var pendingWaitForWifi by pending::waitForWifi
      private var pendingWaitForWifiTimeout by pending::waitForWifiTimeout
 +    private var pendingJoinWifiBeforeServerSearch by pending::joinWifiBeforeServerSearch
 +    private var pendingJoinWifiTimeout by pending::joinWifiTimeout
++    private var pendingHuAutoConnect by pending::headunitServerAutoConnect
++    private var pendingHuStartDelaySec by pending::headunitServerStartDelaySec
      private var pendingBluetoothManagerServiceName by pending::bluetoothManagerServiceName
      private var pendingNativeAaIgnoreExternalBt by pending::nativeAaIgnoreExternalBt
      private var pendingExternalBtZbtTransport by pending::externalBtZbtTransport
-@@ -719,6 +722,8 @@ class SettingsFragment : Fragment() {
+@@ -719,6 +725,10 @@ class SettingsFragment : Fragment() {
          pendingHelperConnectionStrategy?.let { if (it != settings.helperConnectionStrategy) settings.helperConnectionStrategy = it }
          pendingWaitForWifi?.let { if (it != settings.waitForWifiBeforeWifiDirect) settings.waitForWifiBeforeWifiDirect = it }
          pendingWaitForWifiTimeout?.let { if (it != settings.waitForWifiTimeout) settings.waitForWifiTimeout = it }
 +        pendingJoinWifiBeforeServerSearch?.let { if (it != settings.joinWifiBeforeServerSearch) settings.joinWifiBeforeServerSearch = it }
 +        pendingJoinWifiTimeout?.let { if (it != settings.joinWifiTimeout) settings.joinWifiTimeout = it }
++        pendingHuAutoConnect?.let { if (it != settings.headunitServerAutoConnect) settings.headunitServerAutoConnect = it }
++        pendingHuStartDelaySec?.let { if (it != settings.headunitServerStartDelaySec) settings.headunitServerStartDelaySec = it }
          pendingBluetoothManagerServiceName?.let { if (it != settings.bluetoothManagerServiceName) settings.bluetoothManagerServiceName = it }
          pendingNativeAaIgnoreExternalBt?.let { if (it != settings.nativeAaIgnoreExternalBt) settings.nativeAaIgnoreExternalBt = it }
          pendingExternalBtZbtTransport?.let { if (it != settings.externalBtZbtTransport) settings.externalBtZbtTransport = it }
-@@ -1307,6 +1312,7 @@ class SettingsFragment : Fragment() {
+@@ -1307,6 +1317,7 @@ class SettingsFragment : Fragment() {
              // Mode 1 (Auto Server) can also use the auto-hotspot feature
              if (pendingWifiConnectionMode == WifiLauncherMode.AUTO) {
                  addHotspotToggle(items)
@@ -631,12 +1605,72 @@ index 5e5191f7..6caff87c 100644
              }
          }
  
-@@ -4798,6 +4804,40 @@ class SettingsFragment : Fragment() {
+@@ -4798,6 +4809,100 @@ class SettingsFragment : Fragment() {
          ))
      }
  
-+    /** Only Auto reads it: the WiFi button's one sweep is the only search that waits. */
++    /**
++     * Headunit Server's automatic connection, Auto only: whether the service searches by itself,
++     * the startup countdown, the WiFi wait and the phone's learned network, in one group.
++     */
 +    private fun addJoinWifiBeforeServerSearch(items: MutableList<SettingItem>) {
++        items.add(SettingItem.SubHeader("huAutoConnectHeader", R.string.hu_auto_connect_header))
++        val autoConnect = pendingHuAutoConnect ?: settings.headunitServerAutoConnect
++        items.add(SettingItem.ToggleSettingEntry(
++            stableId = "huAutoConnect",
++            nameResId = R.string.hu_auto_connect,
++            descriptionResId = R.string.hu_auto_connect_summary,
++            helpResId = R.string.hu_auto_connect_help,
++            isChecked = autoConnect,
++            onCheckedChanged = { isChecked ->
++                pendingHuAutoConnect = isChecked
++                checkChanges()
++                updateSettingsList()
++            }
++        ))
++        if (autoConnect) {
++            val delaySec = pendingHuStartDelaySec ?: settings.headunitServerStartDelaySec
++            items.add(SettingItem.SliderSettingEntry(
++                stableId = "huStartDelay",
++                nameResId = R.string.hu_start_delay,
++                helpResId = R.string.hu_start_delay_help,
++                value = if (delaySec == 0) getString(R.string.auto_connect_delay_none)
++                    else getString(R.string.auto_connect_delay_seconds_format, delaySec),
++                sliderValue = delaySec.toFloat(),
++                valueFrom = HeadunitServerAutoConnectPolicy.MIN_START_DELAY_SEC.toFloat(),
++                valueTo = HeadunitServerAutoConnectPolicy.MAX_START_DELAY_SEC.toFloat(),
++                stepSize = HeadunitServerAutoConnectPolicy.START_DELAY_STEP_SEC.toFloat(),
++                onValueChanged = { value ->
++                    pendingHuStartDelaySec = value.toInt()
++                    checkChanges()
++                    updateSettingsList()
++                }
++            ))
++        }
++        addJoinWifiRows(items)
++        val phoneSsid = settings.headunitServerPhoneSsid
++        items.add(SettingItem.SettingEntry(
++            stableId = "huPhoneNetwork",
++            nameResId = R.string.hu_phone_network,
++            value = phoneSsid.ifBlank { getString(R.string.hu_phone_network_unknown) },
++            helpResId = R.string.hu_phone_network_help,
++            onClick = {
++                if (settings.headunitServerPhoneSsid.isBlank() && settings.headunitServerPhoneIp.isBlank()) return@SettingEntry
++                MaterialAlertDialogBuilder(requireContext(), R.style.DarkAlertDialog)
++                    .setTitle(R.string.hu_phone_network_forget_title)
++                    .setMessage(getString(R.string.hu_phone_network_forget_message, settings.headunitServerPhoneSsid))
++                    .setPositiveButton(R.string.hu_phone_network_forget) { _, _ ->
++                        settings.forgetHeadunitServerPhoneNetwork()
++                        updateSettingsList()
++                    }
++                    .setNegativeButton(android.R.string.cancel, null)
++                    .show()
++            }
++        ))
++    }
++
++    /** The WiFi wait: the background search and the WiFi button both use it. */
++    private fun addJoinWifiRows(items: MutableList<SettingItem>) {
 +        val enabled = pendingJoinWifiBeforeServerSearch ?: settings.joinWifiBeforeServerSearch
 +        items.add(SettingItem.ToggleSettingEntry(
 +            stableId = "joinWifiBeforeServerSearch",
@@ -673,49 +1707,71 @@ index 5e5191f7..6caff87c 100644
          items.add(SettingItem.ToggleSettingEntry(
              stableId = "autoEnableHotspot",
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
-index 6c536437..f22c9ff6 100644
+index 6c536437..59837f44 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
-@@ -63,6 +63,8 @@ class SettingsPendingCopy {
+@@ -63,6 +63,10 @@ class SettingsPendingCopy {
      var autoEnableHotspot: Boolean? = null
      var waitForWifi: Boolean? = null
      var waitForWifiTimeout: Int? = null
 +    var joinWifiBeforeServerSearch: Boolean? = null
 +    var joinWifiTimeout: Int? = null
++    var headunitServerAutoConnect: Boolean? = null
++    var headunitServerStartDelaySec: Int? = null
      var bluetoothManagerServiceName: String? = null
      var nativeAaIgnoreExternalBt: Boolean? = null
      var externalBtZbtTransport: Boolean? = null
-@@ -158,6 +160,8 @@ class SettingsPendingCopy {
+@@ -158,6 +162,10 @@ class SettingsPendingCopy {
          autoEnableHotspot = settings.autoEnableHotspot
          waitForWifi = settings.waitForWifiBeforeWifiDirect
          waitForWifiTimeout = settings.waitForWifiTimeout
 +        joinWifiBeforeServerSearch = settings.joinWifiBeforeServerSearch
 +        joinWifiTimeout = settings.joinWifiTimeout
++        headunitServerAutoConnect = settings.headunitServerAutoConnect
++        headunitServerStartDelaySec = settings.headunitServerStartDelaySec
          bluetoothManagerServiceName = settings.bluetoothManagerServiceName
          nativeAaIgnoreExternalBt = settings.nativeAaIgnoreExternalBt
          externalBtZbtTransport = settings.externalBtZbtTransport
-@@ -254,6 +258,8 @@ class SettingsPendingCopy {
+@@ -254,6 +262,10 @@ class SettingsPendingCopy {
          autoEnableHotspot != settings.autoEnableHotspot ||
          waitForWifi != settings.waitForWifiBeforeWifiDirect ||
          waitForWifiTimeout != settings.waitForWifiTimeout ||
 +        joinWifiBeforeServerSearch != settings.joinWifiBeforeServerSearch ||
 +        joinWifiTimeout != settings.joinWifiTimeout ||
++        headunitServerAutoConnect != settings.headunitServerAutoConnect ||
++        headunitServerStartDelaySec != settings.headunitServerStartDelaySec ||
          bluetoothManagerServiceName != settings.bluetoothManagerServiceName ||
          nativeAaIgnoreExternalBt != settings.nativeAaIgnoreExternalBt ||
          externalBtZbtTransport != settings.externalBtZbtTransport ||
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/StatusPillPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/main/StatusPillPolicy.kt
+index 85a51ebe..3940135a 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/StatusPillPolicy.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/StatusPillPolicy.kt
+@@ -34,6 +34,10 @@ object StatusPillPolicy {
+         ConnectionStage.WAITING_FOR_PHONE,
+         ConnectionStage.SEARCHING,
+         ConnectionStage.USB_ATTACHED,
++        ConnectionStage.WAITING_FOR_WIFI,
++        ConnectionStage.PHONE_WIFI_NOT_VISIBLE,
++        ConnectionStage.OTHER_WIFI,
++        ConnectionStage.SERVER_CLOSED,
+     )
+ 
+     fun isWaiting(stage: ConnectionStage): Boolean = stage in waitingStages
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt b/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
-index 0d3b0930..96898b2c 100644
+index 0d3b0930..be6e3bad 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
-@@ -2,6 +2,7 @@ package com.andrerinas.openheadunit.utils
+@@ -2,6 +2,8 @@ package com.andrerinas.openheadunit.utils
  
  import com.andrerinas.openheadunit.connection.usb.UsbAutoStartPolicy
  import com.andrerinas.openheadunit.connection.usb.UsbPlugInPolicy
 +import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaitPolicy
++import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnectPolicy
  import android.annotation.SuppressLint
  import com.andrerinas.openheadunit.app.ExternalPowerDisconnectPolicy
  import android.content.ComponentName
-@@ -2615,6 +2616,16 @@ class Settings(private val context: Context) {
+@@ -2615,6 +2617,45 @@ class Settings(private val context: Context) {
          get() = prefs.getInt("wait-for-wifi-timeout", 10)
          set(value) { prefs.edit().putInt("wait-for-wifi-timeout", value).apply() }
  
@@ -723,6 +1779,35 @@ index 0d3b0930..96898b2c 100644
 +    var joinWifiBeforeServerSearch: Boolean
 +        get() = prefs.getBoolean("join-wifi-before-server-search", true)
 +        set(value) { prefs.edit().putBoolean("join-wifi-before-server-search", value).apply() }
++
++    /**
++     * Headunit Server, Auto: the service brings the search up by itself at startup, after a
++     * countdown of [headunitServerStartDelaySec]. Off, only the WiFi button connects.
++     */
++    var headunitServerAutoConnect: Boolean
++        get() = prefs.getBoolean("hu-server-auto-connect", true)
++        set(value) { prefs.edit().putBoolean("hu-server-auto-connect", value).apply() }
++
++    var headunitServerStartDelaySec: Int
++        get() = HeadunitServerAutoConnectPolicy.clampStartDelaySec(
++            prefs.getInt("hu-server-start-delay", HeadunitServerAutoConnectPolicy.DEFAULT_START_DELAY_SEC))
++        set(value) { prefs.edit().putInt("hu-server-start-delay", HeadunitServerAutoConnectPolicy.clampStartDelaySec(value)).apply() }
++
++    /**
++     * The phone's network, learned from the last Headunit Server session over WiFi. Device-local:
++     * not carried in the settings backup, since the next unit learns its own.
++     */
++    var headunitServerPhoneSsid: String
++        get() = prefs.getString("hu-server-phone-ssid", "") ?: ""
++        set(value) { prefs.edit().putString("hu-server-phone-ssid", value).apply() }
++
++    var headunitServerPhoneIp: String
++        get() = prefs.getString("hu-server-phone-ip", "") ?: ""
++        set(value) { prefs.edit().putString("hu-server-phone-ip", value).apply() }
++
++    fun forgetHeadunitServerPhoneNetwork() {
++        prefs.edit().remove("hu-server-phone-ssid").remove("hu-server-phone-ip").apply()
++    }
 +
 +    /** Seconds the WiFi button waits for that join. See [WifiJoinWaitPolicy.clampTimeoutSec]. */
 +    var joinWifiTimeout: Int
@@ -733,23 +1818,25 @@ index 0d3b0930..96898b2c 100644
          get() = HelperStrategy.byIdOrDefault(prefs.getInt("helper-connection-strategy", -1))
          set(value) = prefs.edit().putInt("helper-connection-strategy", value.id).apply()
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt b/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
-index 75134189..c2e667cf 100644
+index 75134189..e2063ddc 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
-@@ -269,6 +269,8 @@ object SettingsBackupManager {
+@@ -269,6 +269,10 @@ object SettingsBackupManager {
          "auto-enable-hotspot" to ValueType.BOOLEAN,
          "wait-for-wifi-before-wifi-direct" to ValueType.BOOLEAN,
          "wait-for-wifi-timeout" to ValueType.INT,
 +        "join-wifi-before-server-search" to ValueType.BOOLEAN,
 +        "join-wifi-timeout" to ValueType.INT,
++        "hu-server-auto-connect" to ValueType.BOOLEAN,
++        "hu-server-start-delay" to ValueType.INT,
          "helper-connection-strategy" to ValueType.INT,
          "bluetooth-manager-service-name" to ValueType.STRING,
          // On by default, so what is worth carrying is the opt-out: a user who turned it off should
 diff --git a/app/src/main/res/values-ar/strings.xml b/app/src/main/res/values-ar/strings.xml
-index 04efc51a..f6411128 100644
+index 04efc51a..12749282 100644
 --- a/app/src/main/res/values-ar/strings.xml
 +++ b/app/src/main/res/values-ar/strings.xml
-@@ -1858,4 +1858,13 @@
+@@ -1858,4 +1858,17 @@
      <string name="usb_wireless_dongle_help">فعّل هذا الخيار إذا كنت تتصل عبر محول USB لاسلكي مثل AAWireless أو Carlinkit. لا يستطيع Open Headunit التمييز بين الدونجل والكابل، لذا يغيّر هذا الخيار تسميات الشاشة الرئيسية من سلكي إلى لاسلكي.</string>
      <string name="home_subtitle_usb_dongle">لاسلكياً</string>
      <string name="home_action_connect_wireless_dongle">الاتصال لاسلكياً</string>
@@ -762,12 +1849,16 @@ index 04efc51a..f6411128 100644
 +    <string name="join_wifi_still_waiting">ما زال في انتظار WiFi…</string>
 +    <string name="join_wifi_timed_out">لم يتم الاتصال بأي شبكة WiFi. هل نقطة اتصال الهاتف مفعّلة؟</string>
 +    <string name="join_wifi_turn_on">شبكة WiFi مغلقة. شغّلها؛ يبدأ البحث فور الاتصال.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-cs/strings.xml b/app/src/main/res/values-cs/strings.xml
-index 94bcd423..9e00444e 100644
+index 94bcd423..32f4d6f9 100644
 --- a/app/src/main/res/values-cs/strings.xml
 +++ b/app/src/main/res/values-cs/strings.xml
-@@ -1857,4 +1857,13 @@
+@@ -1857,4 +1857,17 @@
      <string name="usb_wireless_dongle_help">Zapněte, pokud se připojujete přes bezdrátový USB adaptér, například AAWireless nebo Carlinkit. Open Headunit nerozezná adaptér od kabelu, proto tato volba změní popisky na domovské obrazovce na bezdrátové.</string>
      <string name="home_subtitle_usb_dongle">Bezdrátově</string>
      <string name="home_action_connect_wireless_dongle">Připojit bezdrátově</string>
@@ -780,12 +1871,16 @@ index 94bcd423..9e00444e 100644
 +    <string name="join_wifi_still_waiting">Stále čekám na Wi-Fi…</string>
 +    <string name="join_wifi_timed_out">Nepřipojeno k žádné síti Wi-Fi. Je hotspot telefonu zapnutý?</string>
 +    <string name="join_wifi_turn_on">Wi-Fi je vypnuté. Zapněte ho; hledání začne po připojení.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-de/strings.xml b/app/src/main/res/values-de/strings.xml
-index 829502d1..ae707ff2 100644
+index 829502d1..77f12641 100644
 --- a/app/src/main/res/values-de/strings.xml
 +++ b/app/src/main/res/values-de/strings.xml
-@@ -1860,4 +1860,13 @@
+@@ -1860,4 +1860,17 @@
      <string name="esp32_relay_end_aa_on_disconnect_summary">Sitzung beenden, wenn das Relay zweimal nicht antwortet</string>
      <string name="esp32_relay_end_aa_on_disconnect_description">Dieses Gerät sendet alle 2 Sekunden eine Statusprüfung an das Relay. Bleiben zwei Prüfungen in Folge ohne Antwort, endet die Android-Auto-Sitzung.</string>
      <string name="esp32_relay_phase_failed">Fehlgeschlagen: %1$s</string>
@@ -798,12 +1893,16 @@ index 829502d1..ae707ff2 100644
 +    <string name="join_wifi_still_waiting">Warte noch auf WLAN…</string>
 +    <string name="join_wifi_timed_out">Kein WLAN verbunden. Ist der Hotspot des Handys an?</string>
 +    <string name="join_wifi_turn_on">WLAN ist aus. Schalte es ein; die Suche startet nach der Verbindung.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-es-rES/strings.xml b/app/src/main/res/values-es-rES/strings.xml
-index 2c2290dd..0b7e24a6 100644
+index 2c2290dd..98952546 100644
 --- a/app/src/main/res/values-es-rES/strings.xml
 +++ b/app/src/main/res/values-es-rES/strings.xml
-@@ -1871,4 +1871,13 @@
+@@ -1871,4 +1871,17 @@
      <string name="usb_wireless_dongle_help">Actívalo si te conectas mediante un adaptador USB inalámbrico como AAWireless o Carlinkit. Open Headunit no puede distinguir un adaptador de un cable, por lo que esta opción cambia las etiquetas de la pantalla de inicio a inalámbrico.</string>
      <string name="home_subtitle_usb_dongle">De forma inalámbrica</string>
      <string name="home_action_connect_wireless_dongle">Conectar de forma inalámbrica</string>
@@ -816,12 +1915,16 @@ index 2c2290dd..0b7e24a6 100644
 +    <string name="join_wifi_still_waiting">Aún esperando el Wi-Fi…</string>
 +    <string name="join_wifi_timed_out">No se conectó a ninguna red Wi-Fi. ¿Está activa la zona Wi-Fi del teléfono?</string>
 +    <string name="join_wifi_turn_on">El Wi-Fi está apagado. Actívalo; la búsqueda empieza al conectarse.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-es/strings.xml b/app/src/main/res/values-es/strings.xml
-index 63bc453e..758bac06 100644
+index 63bc453e..1ba0c9a1 100644
 --- a/app/src/main/res/values-es/strings.xml
 +++ b/app/src/main/res/values-es/strings.xml
-@@ -1864,4 +1864,13 @@
+@@ -1864,4 +1864,17 @@
      <string name="usb_wireless_dongle_help">Actívalo si te conectas mediante un adaptador USB inalámbrico como AAWireless o Carlinkit. Open Headunit no puede distinguir un dongle de un cable, por lo que esta opción cambia las etiquetas de la pantalla de inicio a inalámbrico.</string>
      <string name="home_subtitle_usb_dongle">De forma inalámbrica</string>
      <string name="home_action_connect_wireless_dongle">Conectar de forma inalámbrica</string>
@@ -834,12 +1937,16 @@ index 63bc453e..758bac06 100644
 +    <string name="join_wifi_still_waiting">Aún esperando el Wi-Fi…</string>
 +    <string name="join_wifi_timed_out">No se conectó a ninguna red Wi-Fi. ¿Está activa la zona Wi-Fi del teléfono?</string>
 +    <string name="join_wifi_turn_on">El Wi-Fi está apagado. Actívalo; la búsqueda empieza al conectarse.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-fr/strings.xml b/app/src/main/res/values-fr/strings.xml
-index 37ed3bc9..ec52acb3 100644
+index 37ed3bc9..4a314409 100644
 --- a/app/src/main/res/values-fr/strings.xml
 +++ b/app/src/main/res/values-fr/strings.xml
-@@ -1902,4 +1902,13 @@
+@@ -1902,4 +1902,17 @@
      <string name="usb_wireless_dongle_help">Activez cette option si vous utilisez un adaptateur USB sans fil comme AAWireless ou Carlinkit. Open Headunit ne peut pas différencier un dongle d’un câble ; cette option remplace donc les libellés câble par sans fil sur l’écran d’accueil.</string>
      <string name="home_subtitle_usb_dongle">Sans fil</string>
      <string name="home_action_connect_wireless_dongle">Connecter sans fil</string>
@@ -852,12 +1959,16 @@ index 37ed3bc9..ec52acb3 100644
 +    <string name="join_wifi_still_waiting">Toujours en attente du Wi-Fi…</string>
 +    <string name="join_wifi_timed_out">Aucun réseau Wi-Fi rejoint. Le point d\'accès du téléphone est-il activé ?</string>
 +    <string name="join_wifi_turn_on">Le Wi-Fi est désactivé. Activez-le ; la recherche démarre une fois connecté.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-hi/strings.xml b/app/src/main/res/values-hi/strings.xml
-index 56b13e9f..c5ed9076 100644
+index 56b13e9f..cc45bade 100644
 --- a/app/src/main/res/values-hi/strings.xml
 +++ b/app/src/main/res/values-hi/strings.xml
-@@ -1903,4 +1903,13 @@
+@@ -1903,4 +1903,17 @@
      <string name="usb_wireless_dongle_help">यदि आप AAWireless या Carlinkit जैसे वायरलेस USB अडैप्टर से कनेक्ट करते हैं तो इसे चालू करें। Open Headunit डोंगल और केबल में अंतर नहीं कर सकता, इसलिए यह विकल्प होम स्क्रीन के लेबल को केबल से वायरलेस में बदल देता है।</string>
      <string name="home_subtitle_usb_dongle">वायरलेस रूप से</string>
      <string name="home_action_connect_wireless_dongle">वायरलेस कनेक्ट करें</string>
@@ -870,12 +1981,16 @@ index 56b13e9f..c5ed9076 100644
 +    <string name="join_wifi_still_waiting">अभी भी वाई-फ़ाई का इंतज़ार है…</string>
 +    <string name="join_wifi_timed_out">किसी वाई-फ़ाई नेटवर्क से नहीं जुड़ा। क्या फ़ोन का हॉटस्पॉट चालू है?</string>
 +    <string name="join_wifi_turn_on">वाई-फ़ाई बंद है। उसे चालू करें; जुड़ते ही खोज शुरू होगी।</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-hu/strings.xml b/app/src/main/res/values-hu/strings.xml
-index 09a770a9..aa5703fc 100644
+index 09a770a9..9b21f7b7 100644
 --- a/app/src/main/res/values-hu/strings.xml
 +++ b/app/src/main/res/values-hu/strings.xml
-@@ -1857,4 +1857,13 @@
+@@ -1857,4 +1857,17 @@
      <string name="usb_wireless_dongle_help">Kapcsold be, ha vezeték nélküli USB-adapterrel (például AAWireless vagy Carlinkit) csatlakozol. Az Open Headunit nem tudja megkülönböztetni az adaptert a kábeltől, ezért ez az opció vezeték nélkülire cseréli a kezdőképernyő feliratait.</string>
      <string name="home_subtitle_usb_dongle">Vezeték nélkül</string>
      <string name="home_action_connect_wireless_dongle">Csatlakozás vezeték nélkül</string>
@@ -888,12 +2003,16 @@ index 09a770a9..aa5703fc 100644
 +    <string name="join_wifi_still_waiting">Még mindig várakozás a Wi-Fi-re…</string>
 +    <string name="join_wifi_timed_out">Nem sikerült Wi-Fi-hálózathoz csatlakozni. Be van kapcsolva a telefon hotspotja?</string>
 +    <string name="join_wifi_turn_on">A Wi-Fi ki van kapcsolva. Kapcsold be; a keresés a csatlakozás után indul.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-in/strings.xml b/app/src/main/res/values-in/strings.xml
-index 92b4728d..0f5b4331 100644
+index 92b4728d..b860e8b7 100644
 --- a/app/src/main/res/values-in/strings.xml
 +++ b/app/src/main/res/values-in/strings.xml
-@@ -1904,4 +1904,13 @@
+@@ -1904,4 +1904,17 @@
      <string name="usb_wireless_dongle_help">Aktifkan ini jika Anda terhubung melalui adaptor USB nirkabel seperti AAWireless atau Carlinkit. Open Headunit tidak dapat membedakan dongle dari kabel, jadi opsi ini mengubah label layar utama dari kabel menjadi nirkabel.</string>
      <string name="home_subtitle_usb_dongle">Secara nirkabel</string>
      <string name="home_action_connect_wireless_dongle">Hubungkan secara nirkabel</string>
@@ -906,12 +2025,16 @@ index 92b4728d..0f5b4331 100644
 +    <string name="join_wifi_still_waiting">Masih menunggu WiFi…</string>
 +    <string name="join_wifi_timed_out">Tidak tersambung ke jaringan WiFi. Apakah hotspot ponsel menyala?</string>
 +    <string name="join_wifi_turn_on">WiFi mati. Nyalakan; pencarian dimulai setelah tersambung.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-it/strings.xml b/app/src/main/res/values-it/strings.xml
-index 1a0b9f2a..9ed30315 100644
+index 1a0b9f2a..5df423c6 100644
 --- a/app/src/main/res/values-it/strings.xml
 +++ b/app/src/main/res/values-it/strings.xml
-@@ -1859,4 +1859,13 @@
+@@ -1859,4 +1859,17 @@
      <string name="usb_wireless_dongle_help">Attiva questa opzione se ti colleghi tramite un adattatore USB wireless come AAWireless o Carlinkit. Open Headunit non può distinguere un dongle da un cavo, quindi questa opzione cambia le etichette della schermata iniziale da cavo a wireless.</string>
      <string name="home_subtitle_usb_dongle">In modalità wireless</string>
      <string name="home_action_connect_wireless_dongle">Connetti in modalità wireless</string>
@@ -924,12 +2047,16 @@ index 1a0b9f2a..9ed30315 100644
 +    <string name="join_wifi_still_waiting">Ancora in attesa del WiFi…</string>
 +    <string name="join_wifi_timed_out">Nessuna rete WiFi collegata. L\'hotspot del telefono è attivo?</string>
 +    <string name="join_wifi_turn_on">Il WiFi è spento. Accendilo; la ricerca parte appena si collega.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-ja/strings.xml b/app/src/main/res/values-ja/strings.xml
-index 2f6f360d..9edd0a51 100644
+index 2f6f360d..818b8cae 100644
 --- a/app/src/main/res/values-ja/strings.xml
 +++ b/app/src/main/res/values-ja/strings.xml
-@@ -1859,4 +1859,13 @@
+@@ -1859,4 +1859,17 @@
      <string name="usb_wireless_dongle_help">AAWireless や Carlinkit などのワイヤレス USB アダプターで接続する場合に有効にします。Open Headunit はドングルとケーブルを判別できないため、ホーム画面の表示をケーブルからワイヤレスに切り替えます。</string>
      <string name="home_subtitle_usb_dongle">ワイヤレス接続</string>
      <string name="home_action_connect_wireless_dongle">ワイヤレスで接続</string>
@@ -942,12 +2069,16 @@ index 2f6f360d..9edd0a51 100644
 +    <string name="join_wifi_still_waiting">Wi-Fiを待っています…</string>
 +    <string name="join_wifi_timed_out">Wi-Fiに接続できませんでした。スマートフォンのテザリングはオンですか？</string>
 +    <string name="join_wifi_turn_on">Wi-Fiがオフです。オンにすると、接続後に検索が始まります。</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-ka/strings.xml b/app/src/main/res/values-ka/strings.xml
-index 02b90e95..d12a1563 100644
+index 02b90e95..f1d2e497 100644
 --- a/app/src/main/res/values-ka/strings.xml
 +++ b/app/src/main/res/values-ka/strings.xml
-@@ -1842,4 +1842,13 @@
+@@ -1842,4 +1842,17 @@
      <string name="usb_wireless_dongle_help">ჩართეთ, თუ უკავშირდებით უსადენო USB ადაპტერით (მაგ. AAWireless ან Carlinkit). Open Headunit ვერ ასხვავებს დონგლს კაბელისგან, ამიტომ ეს პარამეტრი მთავარ ეკრანზე წარწერებს კაბელიდან უსადენოზე ცვლის.</string>
      <string name="home_subtitle_usb_dongle">უსადენოდ</string>
      <string name="home_action_connect_wireless_dongle">უსადენოდ დაკავშირება</string>
@@ -960,12 +2091,16 @@ index 02b90e95..d12a1563 100644
 +    <string name="join_wifi_still_waiting">ჯერ კიდევ ველოდებით WiFi-ს…</string>
 +    <string name="join_wifi_timed_out">WiFi ქსელს ვერ დაუკავშირდა. ჩართულია ტელეფონის ჰოტსპოტი?</string>
 +    <string name="join_wifi_turn_on">WiFi გამორთულია. ჩართეთ; ძებნა დაკავშირებისთანავე დაიწყება.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-ko/strings.xml b/app/src/main/res/values-ko/strings.xml
-index e8fcf134..c2bf0982 100644
+index e8fcf134..b1384a63 100644
 --- a/app/src/main/res/values-ko/strings.xml
 +++ b/app/src/main/res/values-ko/strings.xml
-@@ -1851,4 +1851,13 @@
+@@ -1851,4 +1851,17 @@
      <string name="usb_wireless_dongle_help">AAWireless 또는 Carlinkit 같은 무선 USB 어댑터를 통해 연결하는 경우 켜세요. Open Headunit은 동글과 일반 케이블을 구분할 수 없으므로, 이 옵션으로 홈 화면 표시를 유선에서 무선으로 바꿉니다.</string>
      <string name="home_subtitle_usb_dongle">무선으로</string>
      <string name="home_action_connect_wireless_dongle">무선으로 연결</string>
@@ -978,12 +2113,16 @@ index e8fcf134..c2bf0982 100644
 +    <string name="join_wifi_still_waiting">아직 Wi-Fi를 기다리는 중…</string>
 +    <string name="join_wifi_timed_out">Wi-Fi 네트워크에 연결되지 않았습니다. 휴대폰 핫스팟이 켜져 있나요?</string>
 +    <string name="join_wifi_turn_on">Wi-Fi가 꺼져 있습니다. 켜면 연결 후 검색이 시작됩니다.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-nl/strings.xml b/app/src/main/res/values-nl/strings.xml
-index 5c1e580f..27d84594 100644
+index 5c1e580f..5aa48af3 100644
 --- a/app/src/main/res/values-nl/strings.xml
 +++ b/app/src/main/res/values-nl/strings.xml
-@@ -1861,4 +1861,13 @@
+@@ -1861,4 +1861,17 @@
      <string name="usb_wireless_dongle_help">Schakel dit in als je verbindt via een draadloze USB-adapter zoals AAWireless of Carlinkit. Open Headunit kan een dongle niet van een kabel onderscheiden, dus deze optie verandert de startschermteksten van kabel naar draadloos.</string>
      <string name="home_subtitle_usb_dongle">Draadloos</string>
      <string name="home_action_connect_wireless_dongle">Draadloos verbinden</string>
@@ -996,12 +2135,16 @@ index 5c1e580f..27d84594 100644
 +    <string name="join_wifi_still_waiting">Nog steeds wachten op wifi…</string>
 +    <string name="join_wifi_timed_out">Geen wifinetwerk verbonden. Staat de hotspot van de telefoon aan?</string>
 +    <string name="join_wifi_turn_on">Wifi staat uit. Zet het aan; het zoeken begint zodra er verbinding is.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-pl/strings.xml b/app/src/main/res/values-pl/strings.xml
-index 801acf3b..53791d1f 100644
+index 801acf3b..e3284aaf 100644
 --- a/app/src/main/res/values-pl/strings.xml
 +++ b/app/src/main/res/values-pl/strings.xml
-@@ -1862,4 +1862,13 @@
+@@ -1862,4 +1862,17 @@
      <string name="usb_wireless_dongle_help">Włącz tę opcję, jeśli łączysz się przez bezprzewodowy adapter USB, np. AAWireless lub Carlinkit. Open Headunit nie odróżnia adaptera od kabla, więc ta opcja zmienia etykiety na ekranie głównym z kablowych na bezprzewodowe.</string>
      <string name="home_subtitle_usb_dongle">Bezprzewodowo</string>
      <string name="home_action_connect_wireless_dongle">Połącz bezprzewodowo</string>
@@ -1014,12 +2157,16 @@ index 801acf3b..53791d1f 100644
 +    <string name="join_wifi_still_waiting">Nadal czekam na WiFi…</string>
 +    <string name="join_wifi_timed_out">Nie połączono z żadną siecią WiFi. Czy hotspot telefonu jest włączony?</string>
 +    <string name="join_wifi_turn_on">WiFi jest wyłączone. Włącz je; wyszukiwanie ruszy po połączeniu.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-pt-rBR/strings.xml b/app/src/main/res/values-pt-rBR/strings.xml
-index 2f3b4ea2..42dd4637 100644
+index 2f3b4ea2..531f1702 100644
 --- a/app/src/main/res/values-pt-rBR/strings.xml
 +++ b/app/src/main/res/values-pt-rBR/strings.xml
-@@ -1857,4 +1857,13 @@
+@@ -1857,4 +1857,17 @@
      <string name="usb_wireless_dongle_help">Ative se você se conecta por um adaptador USB sem fio como AAWireless ou Carlinkit. O Open Headunit não consegue diferenciar um dongle de um cabo, então esta opção muda os rótulos da tela inicial de cabo para sem fio.</string>
      <string name="home_subtitle_usb_dongle">Sem fio</string>
      <string name="home_action_connect_wireless_dongle">Conectar sem fio</string>
@@ -1032,12 +2179,16 @@ index 2f3b4ea2..42dd4637 100644
 +    <string name="join_wifi_still_waiting">Ainda aguardando o WiFi…</string>
 +    <string name="join_wifi_timed_out">Nenhuma rede WiFi conectada. O hotspot do celular está ligado?</string>
 +    <string name="join_wifi_turn_on">O WiFi está desligado. Ligue-o; a busca começa quando conectar.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-pt-rPT/strings.xml b/app/src/main/res/values-pt-rPT/strings.xml
-index 24328119..f4cbacdc 100644
+index 24328119..ed73d930 100644
 --- a/app/src/main/res/values-pt-rPT/strings.xml
 +++ b/app/src/main/res/values-pt-rPT/strings.xml
-@@ -1909,4 +1909,13 @@
+@@ -1909,4 +1909,17 @@
      <string name="usb_wireless_dongle_help">Ative esta opção se utiliza um adaptador USB sem fios como AAWireless ou Carlinkit. O Open Headunit não distingue um dongle de um cabo, pelo que esta opção altera os textos do ecrã inicial de cabo para sem fios.</string>
      <string name="home_subtitle_usb_dongle">Sem fios</string>
      <string name="home_action_connect_wireless_dongle">Ligar sem fios</string>
@@ -1050,12 +2201,16 @@ index 24328119..f4cbacdc 100644
 +    <string name="join_wifi_still_waiting">Ainda à espera do Wi-Fi…</string>
 +    <string name="join_wifi_timed_out">Nenhuma rede Wi-Fi ligada. A zona Wi-Fi do telemóvel está ativa?</string>
 +    <string name="join_wifi_turn_on">O Wi-Fi está desligado. Ligue-o; a procura começa quando se ligar.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-ro/strings.xml b/app/src/main/res/values-ro/strings.xml
-index 25c89b8e..7f340997 100644
+index 25c89b8e..cf2d704b 100644
 --- a/app/src/main/res/values-ro/strings.xml
 +++ b/app/src/main/res/values-ro/strings.xml
-@@ -1855,4 +1855,13 @@
+@@ -1855,4 +1855,17 @@
      <string name="usb_wireless_dongle_help">Activează această opțiune dacă te conectezi printr-un adaptor USB wireless precum AAWireless sau Carlinkit. Open Headunit nu poate deosebi un dongle de un cablu, așa că această opțiune schimbă etichetele de pe ecranul principal din cablu în wireless.</string>
      <string name="home_subtitle_usb_dongle">Wireless</string>
      <string name="home_action_connect_wireless_dongle">Conectează wireless</string>
@@ -1068,12 +2223,16 @@ index 25c89b8e..7f340997 100644
 +    <string name="join_wifi_still_waiting">Încă se așteaptă WiFi…</string>
 +    <string name="join_wifi_timed_out">Nicio rețea WiFi conectată. Este pornit hotspotul telefonului?</string>
 +    <string name="join_wifi_turn_on">WiFi este oprit. Pornește-l; căutarea începe după conectare.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
-index 5b895329..e9e0af2b 100644
+index 5b895329..6adf644a 100644
 --- a/app/src/main/res/values-ru/strings.xml
 +++ b/app/src/main/res/values-ru/strings.xml
-@@ -1856,4 +1856,13 @@ Open Headunit предоставляется «как есть» без каки
+@@ -1856,4 +1856,17 @@ Open Headunit предоставляется «как есть» без каки
      <string name="usb_wireless_dongle_help">Включите, если подключаетесь через беспроводной USB-адаптер (например, AAWireless или Carlinkit). Open Headunit не может отличить адаптер от кабеля, поэтому эта настройка меняет подписи на главном экране с кабельных на беспроводные.</string>
      <string name="home_subtitle_usb_dongle">Без проводов</string>
      <string name="home_action_connect_wireless_dongle">Подключить без проводов</string>
@@ -1086,12 +2245,16 @@ index 5b895329..e9e0af2b 100644
 +    <string name="join_wifi_still_waiting">Всё ещё ждём Wi‑Fi…</string>
 +    <string name="join_wifi_timed_out">Не удалось подключиться к Wi‑Fi. Включена ли точка доступа телефона?</string>
 +    <string name="join_wifi_turn_on">Wi‑Fi выключен. Включите его; поиск начнётся после подключения.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-th/strings.xml b/app/src/main/res/values-th/strings.xml
-index 716ff1b1..40f18196 100644
+index 716ff1b1..ad1399fb 100644
 --- a/app/src/main/res/values-th/strings.xml
 +++ b/app/src/main/res/values-th/strings.xml
-@@ -1910,4 +1910,13 @@
+@@ -1910,4 +1910,17 @@
      <string name="usb_wireless_dongle_help">เปิดใช้งานตัวเลือกนี้หากคุณเชื่อมต่อผ่านอะแดปเตอร์ USB ไร้สาย เช่น AAWireless หรือ Carlinkit Open Headunit ไม่สามารถแยกดองเกิลออกจากสายเคเบิลได้ ตัวเลือกนี้จึงเปลี่ยนข้อความบนหน้าจอหลักจากสายเคเบิลเป็นไร้สาย</string>
      <string name="home_subtitle_usb_dongle">แบบไร้สาย</string>
      <string name="home_action_connect_wireless_dongle">เชื่อมต่อแบบไร้สาย</string>
@@ -1104,12 +2267,16 @@ index 716ff1b1..40f18196 100644
 +    <string name="join_wifi_still_waiting">ยังรอ Wi-Fi อยู่…</string>
 +    <string name="join_wifi_timed_out">ไม่ได้เชื่อมต่อเครือข่าย Wi-Fi ใดเลย ฮอตสปอตของโทรศัพท์เปิดอยู่หรือไม่</string>
 +    <string name="join_wifi_turn_on">Wi-Fi ปิดอยู่ เปิดแล้วการค้นหาจะเริ่มเมื่อเชื่อมต่อได้</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-tr/strings.xml b/app/src/main/res/values-tr/strings.xml
-index 083ca374..0e8b54a5 100644
+index 083ca374..75138e67 100644
 --- a/app/src/main/res/values-tr/strings.xml
 +++ b/app/src/main/res/values-tr/strings.xml
-@@ -1852,4 +1852,13 @@
+@@ -1852,4 +1852,31 @@
      <string name="usb_wireless_dongle_help">AAWireless veya Carlinkit gibi bir kablosuz USB adaptörü ile bağlanıyorsanız bunu açın. Open Headunit bir dongle’ı kablodan ayırt edemez, bu yüzden bu seçenek ana ekran etiketlerini kablodan kablosuza çevirir.</string>
      <string name="home_subtitle_usb_dongle">Kablosuz</string>
      <string name="home_action_connect_wireless_dongle">Kablosuz bağlan</string>
@@ -1122,12 +2289,30 @@ index 083ca374..0e8b54a5 100644
 +    <string name="join_wifi_still_waiting">Hâlâ WiFi bekleniyor…</string>
 +    <string name="join_wifi_timed_out">Bir WiFi ağına bağlanılamadı. Telefonun erişim noktası açık mı?</string>
 +    <string name="join_wifi_turn_on">WiFi kapalı. Açın; bağlanınca arama başlar.</string>
++    <string name="hu_auto_connect_header">Otomatik bağlantı</string>
++    <string name="hu_auto_connect">Otomatik bağlan</string>
++    <string name="hu_auto_connect_summary">Uygulama açılınca telefonu kendiliğinden arar.</string>
++    <string name="hu_auto_connect_help">Bu açıkken uygulama telefonun Headunit Sunucusunu kendisi arar: uygulama açılınca aşağıdaki başlangıç gecikmesinden sonra, ve ayarlar ekranından çıkınca yeniden. Kapalıyken yalnızca WiFi tuşu bağlanır. Android Auto\'dan kendiniz çıkarsanız ya da geri sayımda İptal\'e basarsanız da WiFi tuşuna basana kadar durur.</string>
++    <string name="hu_start_delay">Başlangıç gecikmesi</string>
++    <string name="hu_start_delay_help">Uygulama açıldıktan sonra telefonu aramadan önce ne kadar bekleyeceği, 0 ile 60 saniye arası. Ana ekran kartı Şimdi bağlan ve İptal ile geri sayar. Ayarlar ekranını açmak geri sayımı durdurur, böylece rahatça ayar yapabilirsiniz; çıkınca baştan başlar.</string>
++    <string name="hu_phone_network">Telefonun ağı</string>
++    <string name="hu_phone_network_help">Son Headunit Server bağlantısının WiFi ağı, kendiliğinden öğrenilir. Beklerken uygulama bununla telefonun erişim noktasının görünmediğini ya da ünitenin başka bir ağa bağlandığını söyler. Ağ adlarını okumak için konumun açık olması gerekir. Unutmak için dokunun.</string>
++    <string name="hu_phone_network_unknown">Henüz öğrenilmedi</string>
++    <string name="hu_phone_network_forget_title">Telefonun ağı unutulsun mu?</string>
++    <string name="hu_phone_network_forget_message">\"%1$s\" bir sonraki bağlantıda yeniden öğrenilir.</string>
++    <string name="hu_phone_network_forget">Unut</string>
++    <string name="stage_waiting_for_wifi">Telefonun WiFi\'si bekleniyor</string>
++    <string name="stage_phone_wifi_not_visible">Telefonun erişim noktası görünmüyor</string>
++    <string name="stage_other_wifi">Başka bir WiFi ağına bağlı</string>
++    <string name="stage_server_closed">Telefonda Headunit Server kapalı</string>
++    <string name="stage_wifi_joined">WiFi bağlandı, telefona bağlanılıyor</string>
++    <string name="hu_server_closed_toast">Telefon cevap veriyor ama Headunit Server kapalı. Telefonda: Android Auto, Geliştirici ayarları, menü, Headunit sunucusunu başlat.</string>
  </resources>
 diff --git a/app/src/main/res/values-uk/strings.xml b/app/src/main/res/values-uk/strings.xml
-index a46793f9..ed7dae09 100644
+index a46793f9..a71a1507 100644
 --- a/app/src/main/res/values-uk/strings.xml
 +++ b/app/src/main/res/values-uk/strings.xml
-@@ -1860,4 +1860,13 @@
+@@ -1860,4 +1860,17 @@
      <string name="usb_wireless_dongle_help">Увімкніть, якщо підключаєтеся через бездротовий USB-адаптер, як-от AAWireless або Carlinkit. Open Headunit не може відрізнити адаптер від кабелю, тому цей параметр змінює підписи на головному екрані з кабелю на бездротове з’єднання.</string>
      <string name="home_subtitle_usb_dongle">Бездротово</string>
      <string name="home_action_connect_wireless_dongle">Підключити бездротово</string>
@@ -1140,12 +2325,16 @@ index a46793f9..ed7dae09 100644
 +    <string name="join_wifi_still_waiting">Досі чекаємо на Wi-Fi…</string>
 +    <string name="join_wifi_timed_out">Не вдалося підключитися до Wi-Fi. Чи ввімкнено точку доступу телефона?</string>
 +    <string name="join_wifi_turn_on">Wi-Fi вимкнено. Увімкніть його; пошук почнеться після підключення.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-vi/strings.xml b/app/src/main/res/values-vi/strings.xml
-index 5763130d..8e71dd2f 100644
+index 5763130d..40043b42 100644
 --- a/app/src/main/res/values-vi/strings.xml
 +++ b/app/src/main/res/values-vi/strings.xml
-@@ -1859,4 +1859,13 @@
+@@ -1859,4 +1859,17 @@
      <string name="usb_wireless_dongle_help">Bật tùy chọn này nếu bạn kết nối qua bộ chuyển đổi USB không dây như AAWireless hoặc Carlinkit. Open Headunit không thể phân biệt dongle với cáp, nên tùy chọn này đổi nhãn màn hình chính từ cáp sang không dây.</string>
      <string name="home_subtitle_usb_dongle">Không dây</string>
      <string name="home_action_connect_wireless_dongle">Kết nối không dây</string>
@@ -1158,12 +2347,16 @@ index 5763130d..8e71dd2f 100644
 +    <string name="join_wifi_still_waiting">Vẫn đang chờ WiFi…</string>
 +    <string name="join_wifi_timed_out">Chưa kết nối được mạng WiFi nào. Điểm phát của điện thoại đã bật chưa?</string>
 +    <string name="join_wifi_turn_on">WiFi đang tắt. Hãy bật lên; việc tìm sẽ bắt đầu khi kết nối.</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-zh-rCN/strings.xml b/app/src/main/res/values-zh-rCN/strings.xml
-index dc4aea87..b41532ef 100644
+index dc4aea87..4739f961 100644
 --- a/app/src/main/res/values-zh-rCN/strings.xml
 +++ b/app/src/main/res/values-zh-rCN/strings.xml
-@@ -1855,4 +1855,13 @@
+@@ -1855,4 +1855,17 @@
      <string name="usb_wireless_dongle_help">如果您通过 AAWireless 或 Carlinkit 等无线 USB 适配器连接，请开启此选项。Open Headunit 无法区分适配器与数据线，开启后会将主屏幕上的文字从有线更改为无线。</string>
      <string name="home_subtitle_usb_dongle">无线连接</string>
      <string name="home_action_connect_wireless_dongle">无线连接</string>
@@ -1176,12 +2369,16 @@ index dc4aea87..b41532ef 100644
 +    <string name="join_wifi_still_waiting">仍在等待 WLAN…</string>
 +    <string name="join_wifi_timed_out">未连接到任何 WLAN 网络。手机热点是否已开启？</string>
 +    <string name="join_wifi_turn_on">WLAN 已关闭。请打开，连接后即开始搜索。</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values-zh-rTW/strings.xml b/app/src/main/res/values-zh-rTW/strings.xml
-index 88f83021..cefd0ebb 100644
+index 88f83021..6040ced7 100644
 --- a/app/src/main/res/values-zh-rTW/strings.xml
 +++ b/app/src/main/res/values-zh-rTW/strings.xml
-@@ -1855,4 +1855,13 @@
+@@ -1855,4 +1855,17 @@
      <string name="usb_wireless_dongle_help">如果您透過 AAWireless 或 Carlinkit 等無線 USB 轉接器連線，請開啟此選項。Open Headunit 無法區分轉接器與傳輸線，開啟後會將主畫面文字從有線改為無線。</string>
      <string name="home_subtitle_usb_dongle">無線連線</string>
      <string name="home_action_connect_wireless_dongle">無線連線</string>
@@ -1194,12 +2391,16 @@ index 88f83021..cefd0ebb 100644
 +    <string name="join_wifi_still_waiting">仍在等待 Wi-Fi…</string>
 +    <string name="join_wifi_timed_out">未連上任何 Wi-Fi 網路。手機熱點是否已開啟？</string>
 +    <string name="join_wifi_turn_on">Wi-Fi 已關閉。請開啟，連上後即開始搜尋。</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
  </resources>
 diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
-index 4436acb2..5207126f 100644
+index 4436acb2..0e11cc6e 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
-@@ -1933,4 +1933,13 @@
+@@ -1933,4 +1933,31 @@
      <string name="audio_matching_phase_gradient_hint">Slow playback</string>
      <string name="audio_matching_option" translatable="false">%1$s\n(%2$s)</string>
      <string name="audio_matching_description">OHU remains the default. WSOLA aligns overlapping waveforms; Phase Vocoder adjusts spectral phases. Short uses a shorter analysis window. Phase Gradient integrates phase gradients to reconstruct phases. These independent methods add processing latency; their names do not rank sound quality.\n\nNative methods: PCM music. Navigation, voice responses, system sounds and AAC use OHU.\nReconnect to apply. Removed engine preferences reset to OHU.</string>
@@ -1212,6 +2413,24 @@ index 4436acb2..5207126f 100644
 +    <string name="join_wifi_still_waiting">Still waiting for WiFi…</string>
 +    <string name="join_wifi_timed_out">No WiFi network joined. Is the phone\'s hotspot on?</string>
 +    <string name="join_wifi_turn_on">WiFi is off. Turn it on; the search starts once it connects.</string>
++    <string name="hu_auto_connect_header">Automatic connection</string>
++    <string name="hu_auto_connect">Connect automatically</string>
++    <string name="hu_auto_connect_summary">Search for the phone by itself when the app starts.</string>
++    <string name="hu_auto_connect_help">With this on, the app looks for the phone\'s Headunit Server by itself: after the start delay below when the app starts, and again when you leave the settings screen. Off, only the WiFi button connects. Leaving Android Auto yourself, or Cancel during the countdown, also stops it until you press the WiFi button.</string>
++    <string name="hu_start_delay">Start delay</string>
++    <string name="hu_start_delay_help">How long the app waits after it starts before it searches for the phone, from 0 to 60 seconds. The home card counts down, with Connect now and Cancel. Opening the settings screen stops the countdown so you can change things in peace; it starts again from the top when you leave.</string>
++    <string name="hu_phone_network">Phone\'s network</string>
++    <string name="hu_phone_network_help">The WiFi network of the last Headunit Server session, learned by itself. While waiting, the app uses it to tell you when the phone\'s hotspot is not in range, or when this unit joined another network. Reading network names needs location to be on. Tap to forget it.</string>
++    <string name="hu_phone_network_unknown">Not learned yet</string>
++    <string name="hu_phone_network_forget_title">Forget the phone\'s network?</string>
++    <string name="hu_phone_network_forget_message">\"%1$s\" is learned again at the next connection.</string>
++    <string name="hu_phone_network_forget">Forget</string>
++    <string name="stage_waiting_for_wifi">Waiting for the phone\'s WiFi</string>
++    <string name="stage_phone_wifi_not_visible">The phone\'s hotspot is not in range</string>
++    <string name="stage_other_wifi">On another WiFi network</string>
++    <string name="stage_server_closed">Headunit Server is off on the phone</string>
++    <string name="stage_wifi_joined">WiFi connected, connecting to the phone</string>
++    <string name="hu_server_closed_toast">The phone answers, but its Headunit Server is off. On the phone: Android Auto, Developer settings, menu, Start head unit server.</string>
  </resources>
 diff --git a/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicyTest.kt b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicyTest.kt
 new file mode 100644
@@ -1280,4 +2499,210 @@ index 00000000..9daa58c6
 +        assertFalse(WifiJoinWaitPolicy.shouldParkDiscovery(isHeadunitServerAuto = true, enabled = false, wifiConnected = false))
 +        assertFalse(WifiJoinWaitPolicy.shouldParkDiscovery(isHeadunitServerAuto = false, enabled = true, wifiConnected = false))
 +    }
++}
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicyTest.kt b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicyTest.kt
+new file mode 100644
+index 00000000..552ca27f
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicyTest.kt
+@@ -0,0 +1,105 @@
++package com.andrerinas.openheadunit.connection.wifi.autoconnect
++
++import com.andrerinas.openheadunit.connection.wifi.autoconnect.HeadunitServerAutoConnectPolicy as P
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class HeadunitServerAutoConnectPolicyTest {
++
++    @Test
++    fun `the start delay is held to the slider's range`() {
++        assertEquals(0, P.clampStartDelaySec(-5))
++        assertEquals(60, P.clampStartDelaySec(500))
++        assertEquals(15, P.clampStartDelaySec(P.DEFAULT_START_DELAY_SEC))
++    }
++
++    @Test
++    fun `the countdown runs only for Headunit Server Auto with automatic connection and a delay`() {
++        assertTrue(P.countsDown(isHeadunitServerAuto = true, autoConnect = true, delaySec = 15, sessionLive = false))
++        assertFalse(P.countsDown(isHeadunitServerAuto = false, autoConnect = true, delaySec = 15, sessionLive = false))
++        assertFalse(P.countsDown(isHeadunitServerAuto = true, autoConnect = false, delaySec = 15, sessionLive = false))
++        assertFalse(P.countsDown(isHeadunitServerAuto = true, autoConnect = true, delaySec = 0, sessionLive = false))
++        assertFalse(P.countsDown(isHeadunitServerAuto = true, autoConnect = true, delaySec = 15, sessionLive = true))
++    }
++
++    @Test
++    fun `automatic connection off leaves only the button, and only for Headunit Server`() {
++        assertFalse(P.armsByItself(isHeadunitServerAuto = true, autoConnect = false))
++        assertTrue(P.armsByItself(isHeadunitServerAuto = true, autoConnect = true))
++        assertTrue(P.armsByItself(isHeadunitServerAuto = false, autoConnect = false))
++    }
++
++    @Test
++    fun `leaving settings restarts the countdown unless the driver said not now`() {
++        fun restarts(cancelled: Boolean = false, exited: Boolean = false, live: Boolean = false, auto: Boolean = true) =
++            P.restartsAfterSettings(true, auto, cancelled, exited, live)
++        assertTrue(restarts())
++        assertFalse(restarts(cancelled = true))
++        assertFalse(restarts(exited = true))
++        assertFalse(restarts(live = true))
++        assertFalse(restarts(auto = false))
++        assertFalse(P.restartsAfterSettings(false, true, false, false, false))
++    }
++
++    @Test
++    fun `quick retries are short, few, and then hand back to the loop`() {
++        val gaps = (0 until P.fastRescanCount).map { P.fastRescanDelayMs(it)!! }
++        assertTrue(gaps.all { it in 1L..3_000L })
++        assertTrue("the quick retries take ${gaps.sum()} ms", gaps.sum() <= 10_000L)
++        assertNull(P.fastRescanDelayMs(P.fastRescanCount))
++    }
++
++    @Test
++    fun `an SSID loses its quotes and Android's placeholder means unknown`() {
++        assertEquals("Galaxy S24", P.cleanSsid("\"Galaxy S24\""))
++        assertNull(P.cleanSsid("<unknown ssid>"))
++        assertNull(P.cleanSsid(""))
++        assertNull(P.cleanSsid(null))
++    }
++
++    @Test
++    fun `another network is only called out when both names are known`() {
++        assertTrue(P.isOtherNetwork("Galaxy S24", "\"HomeWiFi\""))
++        assertFalse(P.isOtherNetwork("Galaxy S24", "\"Galaxy S24\""))
++        assertFalse(P.isOtherNetwork("", "HomeWiFi"))
++        assertFalse(P.isOtherNetwork("Galaxy S24", "<unknown ssid>"))
++    }
++
++    @Test
++    fun `the hotspot is missing only from a scan that saw something`() {
++        assertEquals(true, P.phoneWifiVisible("Galaxy S24", listOf("HomeWiFi", "\"Galaxy S24\"")))
++        assertEquals(false, P.phoneWifiVisible("Galaxy S24", listOf("HomeWiFi", "Cafe")))
++        assertNull("no location access returns nothing", P.phoneWifiVisible("Galaxy S24", emptyList()))
++        assertNull(P.phoneWifiVisible("Galaxy S24", null))
++        assertNull("nothing learned yet", P.phoneWifiVisible("", listOf("HomeWiFi")))
++    }
++
++    @Test
++    fun `refused is told apart from unanswered`() {
++        assertTrue(P.isRefused("ConnectException", "failed to connect to /192.168.43.1 (port 5277): connect failed: ECONNREFUSED (Connection refused)"))
++        assertFalse(P.isRefused("SocketTimeoutException", "failed to connect after 300ms"))
++        assertFalse(P.isRefused("ConnectException", "ENETUNREACH (Network is unreachable)"))
++        assertFalse(P.isRefused(null, null))
++    }
++
++    @Test
++    fun `the subnet sweep is skipped only when the refusing gateway is the known phone`() {
++        assertTrue(P.skipsSubnetSweep("192.168.43.1", "192.168.43.1"))
++        assertFalse(P.skipsSubnetSweep("192.168.1.1", "192.168.43.1"))
++        assertFalse("nothing learned yet", P.skipsSubnetSweep("192.168.43.1", ""))
++        assertFalse(P.skipsSubnetSweep(null, "192.168.43.1"))
++    }
++
++    @Test
++    fun `the timeline is one line with skipped steps marked`() {
++        val line = P.formatTimeline(
++            listOf(P.Step("start->search", 15_000L), P.Step("WiFi", 8_200L), P.Step("phone", null)),
++            "network=Galaxy S24, 5180 MHz"
++        )
++        assertEquals("Timeline: start->search 15.0s -> WiFi 8.2s -> phone - (network=Galaxy S24, 5180 MHz)", line)
++        assertEquals("Timeline: WiFi 1.0s", P.formatTimeline(listOf(P.Step("WiFi", 1_000L)), null))
++    }
++}
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerStagesTest.kt b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerStagesTest.kt
+new file mode 100644
+index 00000000..127e733d
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerStagesTest.kt
+@@ -0,0 +1,89 @@
++package com.andrerinas.openheadunit.connection.wifi.autoconnect
++
++import com.andrerinas.openheadunit.connection.ConnectionStage
++import com.andrerinas.openheadunit.connection.ConnectionStagePolicy
++import com.andrerinas.openheadunit.connection.ConnectionStageTracker
++import com.andrerinas.openheadunit.main.HomePrimaryPolicy
++import com.andrerinas.openheadunit.main.StatusPillPolicy
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++/** The steps Headunit Server's automatic connection shows, and what may replace what. */
++class HeadunitServerStagesTest {
++
++    private val waits = listOf(
++        ConnectionStage.WAITING_FOR_WIFI,
++        ConnectionStage.PHONE_WIFI_NOT_VISIBLE,
++        ConnectionStage.OTHER_WIFI,
++        ConnectionStage.SERVER_CLOSED,
++    )
++
++    @After
++    fun clear() = ConnectionStageTracker.clear()
++
++    @Test
++    fun `waits are listening steps on the pill`() {
++        waits.forEach { assertTrue(it.name, StatusPillPolicy.isWaiting(it)) }
++        assertFalse(StatusPillPolicy.isWaiting(ConnectionStage.WIFI_JOINED))
++    }
++
++    @Test
++    fun `a wait shows its step on the card without becoming a progress screen`() {
++        waits.forEach { stage ->
++            val d = decide(stage)
++            assertEquals(stage.name, HomePrimaryPolicy.Status.WAITING, d.status)
++            assertEquals(stage, d.stage)
++        }
++    }
++
++    @Test
++    fun `the join is progress on the card`() {
++        val d = decide(ConnectionStage.WIFI_JOINED)
++        assertEquals(HomePrimaryPolicy.Status.CONNECTING, d.status)
++        assertEquals(ConnectionStage.WIFI_JOINED, d.stage)
++    }
++
++    @Test
++    fun `a diagnostic can go back to waiting for WiFi after the join`() {
++        ConnectionStageTracker.showDiagnostic(ConnectionStage.WIFI_JOINED)
++        ConnectionStageTracker.showDiagnostic(ConnectionStage.WAITING_FOR_WIFI)
++        assertEquals(ConnectionStage.WAITING_FOR_WIFI, ConnectionStageTracker.stage.value)
++    }
++
++    @Test
++    fun `a diagnostic never covers the phone answering or a USB step`() {
++        for (later in listOf(ConnectionStage.PHONE_ANSWERED, ConnectionStage.CONNECTING, ConnectionStage.SECURING,
++            ConnectionStage.STARTING_PROJECTION, ConnectionStage.USB_ATTACHED, ConnectionStage.USB_SWITCHING)) {
++            ConnectionStageTracker.beginAttempt(later)
++            ConnectionStageTracker.showDiagnostic(ConnectionStage.SERVER_CLOSED)
++            assertEquals(later.name, later, ConnectionStageTracker.stage.value)
++            assertFalse(ConnectionStagePolicy.mayShowDiagnostic(later))
++        }
++    }
++
++    @Test
++    fun `the phone answering replaces every Headunit Server step`() {
++        (waits + ConnectionStage.WIFI_JOINED).forEach { stage ->
++            assertTrue(stage.name, ConnectionStagePolicy.shouldApply(stage, ConnectionStage.PHONE_ANSWERED))
++        }
++    }
++
++    @Test
++    fun `spent quick retries drop the join back to searching, and nothing else`() {
++        ConnectionStageTracker.showDiagnostic(ConnectionStage.WIFI_JOINED)
++        ConnectionStageTracker.retreat(ConnectionStage.WIFI_JOINED, ConnectionStage.SEARCHING)
++        assertEquals(ConnectionStage.SEARCHING, ConnectionStageTracker.stage.value)
++        ConnectionStageTracker.beginAttempt(ConnectionStage.CONNECTING)
++        ConnectionStageTracker.retreat(ConnectionStage.WIFI_JOINED, ConnectionStage.SEARCHING)
++        assertEquals(ConnectionStage.CONNECTING, ConnectionStageTracker.stage.value)
++    }
++
++    private fun decide(stage: ConnectionStage) = HomePrimaryPolicy.decide(HomePrimaryPolicy.Input(
++        chosen = setOf(HomePrimaryPolicy.Connection.WIFI),
++        lastConnection = null, usbPhoneDetected = false, sessionActive = false,
++        reconnectTarget = null, wifiScanning = false, stage = stage,
++    ))
 +}
