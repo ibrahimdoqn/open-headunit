@@ -1,6 +1,6 @@
-From 1371a9e59524cd7931bc8185d264b0d45db69a17 Mon Sep 17 00:00:00 2001
+From c3c56efd6050e09d46bc319fe42e935a48918d32 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Mon, 16 Nov 2026 23:33:21 +0000
+Date: Mon, 16 Nov 2026 23:39:23 +0000
 Subject: [PATCH] Headunit Server: join WiFi before the WiFi button's search
 
 The WiFi button's one-shot search probes this unit's own subnet. A unit
@@ -48,6 +48,7 @@ Both settings are carried in the settings backup.
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
 ---
+ .github/workflows/personal-signed-apk.yml     |  99 ++++
  CHANGELOG.md                                  |   2 +
  README.md                                     |   1 +
  .../andrerinas/openheadunit/aap/AapService.kt | 179 +++++++-
@@ -96,7 +97,8 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
  .../connection/wifi/WifiJoinWaitPolicyTest.kt |  62 +++
  .../HeadunitServerAutoConnectPolicyTest.kt    | 106 +++++
  .../autoconnect/HeadunitServerStagesTest.kt   |  89 ++++
- 48 files changed, 1908 insertions(+), 10 deletions(-)
+ 49 files changed, 2007 insertions(+), 10 deletions(-)
+ create mode 100644 .github/workflows/personal-signed-apk.yml
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
@@ -105,6 +107,111 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
  create mode 100644 app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnectPolicyTest.kt
  create mode 100644 app/src/test/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerStagesTest.kt
 
+diff --git a/.github/workflows/personal-signed-apk.yml b/.github/workflows/personal-signed-apk.yml
+new file mode 100644
+index 00000000..4813f20d
+--- /dev/null
++++ b/.github/workflows/personal-signed-apk.yml
+@@ -0,0 +1,99 @@
++name: Personal signed APK
++
++# Builds the github flavor as a release APK signed with your own key, so every build installs over
++# the previous one and keeps the app's settings. The key never lives in the repository: it comes
++# from two repository secrets (Settings -> Secrets and variables -> Actions):
++#   HEADUNIT_KEYSTORE_BASE64   the .jks file, base64-encoded
++#   HEADUNIT_KEYSTORE_PASSWORD its password (store and key share it)
++# Each run attaches the APK to a pre-release named personal-<run number>, easy to open on a phone.
++
++on:
++  push:
++    branches-ignore: [main]
++  workflow_dispatch:
++
++permissions:
++  contents: write
++
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
++jobs:
++  build:
++    name: Assemble signed github release APK
++    # Only in a fork that has the key; never upstream.
++    if: github.repository != 'andreknieriem/open-headunit'
++    runs-on: ubuntu-latest
++
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Check the signing secrets
++        env:
++          KEYSTORE_BASE64: ${{ secrets.HEADUNIT_KEYSTORE_BASE64 }}
++          KEYSTORE_PASSWORD: ${{ secrets.HEADUNIT_KEYSTORE_PASSWORD }}
++        run: |
++          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
++            echo "::error::Add the HEADUNIT_KEYSTORE_BASE64 and HEADUNIT_KEYSTORE_PASSWORD repository secrets (see patches/SIGNING.md)."
++            exit 1
++          fi
++
++      - name: Set up JDK 17
++        uses: actions/setup-java@v4
++        with:
++          distribution: temurin
++          java-version: "17"
++          cache: gradle
++
++      - name: Set up Android SDK
++        uses: android-actions/setup-android@v4
++        with:
++          packages: ''
++
++      - name: Install required SDK packages
++        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
++
++      - name: Restore the signing key
++        env:
++          KEYSTORE_BASE64: ${{ secrets.HEADUNIT_KEYSTORE_BASE64 }}
++        # app/build.gradle.kts reads headunit-release-key.jks from the repository root (git-ignored).
++        run: echo "$KEYSTORE_BASE64" | base64 --decode > headunit-release-key.jks
++
++      - name: Build signed release APK
++        env:
++          HEADUNIT_KEYSTORE_PASSWORD: ${{ secrets.HEADUNIT_KEYSTORE_PASSWORD }}
++          HEADUNIT_KEY_PASSWORD: ${{ secrets.HEADUNIT_KEYSTORE_PASSWORD }}
++        run: |
++          chmod +x ./gradlew
++          ./gradlew :app:assembleGithubRelease --no-daemon --stacktrace
++
++      - name: Remove the signing key
++        if: always()
++        run: rm -f headunit-release-key.jks
++
++      - name: Check the APK is signed with the personal key
++        run: |
++          APK=$(ls app/build/outputs/apk/github/release/*.apk | head -1)
++          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | tee signer.txt
++          grep -q "CN=Open Headunit personal build" signer.txt || { echo "::error::The APK is not signed with the personal key"; exit 1; }
++
++      - name: Upload APK
++        uses: actions/upload-artifact@v4
++        with:
++          name: open-headunit-personal-signed
++          path: app/build/outputs/apk/github/release/*.apk
++          if-no-files-found: error
++
++      - name: Publish as a pre-release
++        env:
++          GH_TOKEN: ${{ github.token }}
++        run: |
++          APK=$(ls app/build/outputs/apk/github/release/*.apk | head -1)
++          TAG="personal-${{ github.run_number }}"
++          cp "$APK" "open-headunit-${TAG}.apk"
++          gh release create "$TAG" "open-headunit-${TAG}.apk" \
++            --target "${{ github.sha }}" --prerelease \
++            --title "Personal build ${{ github.run_number }} (${GITHUB_REF_NAME})" \
++            --notes "Signed with the personal key. Commit ${{ github.sha }}."
 diff --git a/CHANGELOG.md b/CHANGELOG.md
 index 097aa07d..2d53c4e4 100644
 --- a/CHANGELOG.md
