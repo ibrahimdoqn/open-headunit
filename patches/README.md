@@ -1,41 +1,76 @@
 # Yerel patch'ler
 
-Bu klasör, upstream Open Headunit'e eklediğimiz değişiklikleri tutar. Upstream güncellenince
-patch'leri yeni sürümün üstüne tekrar uygulayıp APK'yı yeniden derleyebilirsiniz.
+Bu klasör, upstream Open Headunit'e eklediğimiz değişikliği **tek bir patch** olarak tutar.
+Upstream güncellenince patch'i yeni sürümün üstüne tekrar uygulayıp APK'yı yeniden derleyin.
 
-| Patch | Ne yapar |
+| Dosya | Ne işe yarar |
 |---|---|
-| `0001-WiFi-button-wait-for-a-WiFi-join-before-the-Headunit.patch` | "WiFi ile bağlan" (Headunit Server modu): ünite WiFi'ye bağlı değilse WiFi taraması başlatır, en fazla 60 sn bağlantıyı bekler, bağlanınca Headunit Server aramasını başlatır. Beklerken tuşa tekrar basmak beklemeyi iptal eder. |
+| `0001-Headunit-Server-join-WiFi-before-the-WiFi-button-s-s.patch` | Değişikliğin kendisi (aşağıya bakın). Upstream'e katkı (PR) için de aynı commit kullanılır. |
+| `commit-message.txt` | Patch'in commit mesajı. `regenerate.sh` bunu kullanır. |
+| `apply.sh` | Klasördeki patch'leri sırayla `git am -3` ile uygular. |
+| `regenerate.sh` | Daldaki tüm değişiklikleri (bu klasör hariç) upstream'e göre tek patch'e çevirir. |
+
+## Patch ne yapar
+
+Ayarlar → **Kablosuz bağlantı** → Headunit Server → **Otomatik** altında iki yeni satır:
+
+- **Aramadan önce WiFi'ye bağlan** (varsayılan: açık)
+- **WiFi bağlanma zaman aşımı** (10–120 sn, varsayılan 30 sn)
+
+Açıkken **WiFi ile bağlan** tuşu şunları yapar:
+
+1. Ünite WiFi'ye zaten bağlıysa eskisi gibi hemen arar.
+2. Bağlı değilse Android'den WiFi taraması ister. Taramalar, Android'in iki dakikada dört tarama sınırına göre zamanlanır.
+3. Beklerken ana ekran kartında "Ağ hazırlanıyor" adımı görünür. Tam ekran kaplama açılmaz.
+4. WiFi kapalıysa Android 10 altında kendisi açar, Android 10 ve üstünde WiFi panelini açar.
+5. WiFi bağlanınca Headunit Server'ı arar. Süre dolarsa uyarı verir ve yine de bir kez arar.
+6. Beklerken tuşa tekrar basmak beklemeyi bozmaz. Durum göstergesindeki X beklemeyi bitirir.
 
 ## Upstream güncellenince
 
 ```bash
 git remote add upstream https://github.com/andreknieriem/open-headunit.git   # bir kez
-git fetch upstream
-git checkout -B my-build upstream/main
-git checkout claude/focused-heisenberg-4d9ev6 -- patches   # patch klasörünü getir
-./patches/apply.sh
-./gradlew :app:assembleGithubDebug        # APK: app/build/outputs/apk/github/debug/
 ```
 
-`apply.sh`, `git am -3` kullanır. Upstream aynı satırları değiştirdiyse git çakışmayı gösterir.
-Çakışmayı düzeltip `git add <dosya> && git am --continue` çalıştırın.
+```bash
+git fetch upstream
+```
 
-## Patch'i değiştirdikten sonra yeniden üretmek
+```bash
+git checkout -B my-build upstream/main
+```
 
-Kod değişikliğini commit edin, ardından:
+```bash
+git checkout claude/focused-heisenberg-4d9ev6 -- patches
+```
+
+```bash
+./patches/apply.sh
+```
+
+```bash
+./gradlew :app:assembleGithubDebug
+```
+
+APK: `app/build/outputs/apk/github/debug/`.
+
+Upstream aynı satırları değiştirdiyse `git am` çakışmayı gösterir. Düzeltip
+`git add <dosya> && git am --continue` çalıştırın, sonra patch'i yeniden üretin.
+
+## Patch'i yeniden üretmek
+
+Kodu değiştirip commit ettikten sonra:
 
 ```bash
 ./patches/regenerate.sh upstream/main
 ```
 
-Bu komut, `upstream/main` üstündeki her commit için bir `.patch` dosyası yazar (dosya adı commit başlığından gelir). Yalnızca
-`patches/` klasörüne dokunan commit'ler bu dosyalara girmez.
-
 ## Değişen dosyalar
 
-- `connection/wifi/WifiJoinWaiter.kt` (yeni dosya; mantığın tamamı burada)
-- `main/HomeFragment.kt` (tuşun Headunit Server dalında bu sınıfı çağıran küçük bir bölüm, `[PATCH wifi-wait]` ile işaretli)
-- `res/values/strings.xml`, `res/values-tr/strings.xml` (4 yeni metin)
-
-Bekleme süresi `HomeFragment` içindeki `WIFI_JOIN_TIMEOUT_MS` ile ayarlanır (varsayılan 60 sn).
+- `connection/wifi/WifiJoinWaitPolicy.kt`: yeni dosya. Bekleme kuralları ve tarama zamanlaması burada, birim testi de var.
+- `connection/wifi/WifiJoinWaiter.kt`: yeni dosya. Tarama, ağ dinleme ve zaman aşımı burada.
+- `aap/AapService.kt`: WiFi tuşunun tek seferlik aramasını bu bekleyiciden geçirir.
+- `main/HomeFragment.kt`: beklenecekse kaplama yerine durum göstergesini kullanır.
+- `main/SettingsFragment.kt`, `SettingsPendingCopy.kt`, `utils/Settings.kt`, `utils/SettingsBackupManager.kt`: ayar satırları, kayıt ve yedekleme.
+- `res/values*/strings.xml`: 25 dilin hepsinde metinler.
+- `CHANGELOG.md`, `README.md`
