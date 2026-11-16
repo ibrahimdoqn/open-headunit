@@ -51,4 +51,12 @@ class WifiJoinWaitPolicyTest {
     fun `the fifth scan waits for the first to leave the window`() {
         assertEquals(WifiJoinWaitPolicy.SCAN_BUDGET_WINDOW_MS, WifiJoinWaitPolicy.scanAtMs(4))
     }
+
+    @Test
+    fun `the search loop parks only for Headunit Server Auto off WiFi with the setting on`() {
+        assertTrue(WifiJoinWaitPolicy.shouldParkDiscovery(isHeadunitServerAuto = true, enabled = true, wifiConnected = false))
+        assertFalse(WifiJoinWaitPolicy.shouldParkDiscovery(isHeadunitServerAuto = true, enabled = true, wifiConnected = true))
+        assertFalse(WifiJoinWaitPolicy.shouldParkDiscovery(isHeadunitServerAuto = true, enabled = false, wifiConnected = false))
+        assertFalse(WifiJoinWaitPolicy.shouldParkDiscovery(isHeadunitServerAuto = false, enabled = true, wifiConnected = false))
+    }
 }

@@ -194,6 +194,13 @@ class WifiLauncherSharedServices(val service: AapService) {
         }
         if (wirelessServer == null && !oneShot)
             return
+        // Off WiFi there is no subnet to sweep. The service parks the loop, asks for WiFi scans,
+        // and starts it again the moment a WiFi network is joined. The WiFi button's one-shot
+        // keeps its own bounded wait in the service, so only the loop is held here.
+        if (!oneShot && service.parkDiscoveryUntilWifi()) {
+            scanningState.value = false
+            return
+        }
 
         scanningState.value = true
 
@@ -298,6 +305,8 @@ class WifiLauncherSharedServices(val service: AapService) {
     }
 
     private fun stopLocalDiscovery() {
+        // Before the early return: a loop parked for WiFi never built its discovery instance.
+        service.onDiscoveryStopped()
         if (localDiscovery == null)
             return
 

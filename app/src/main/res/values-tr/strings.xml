@@ -1853,8 +1853,8 @@
     <string name="home_subtitle_usb_dongle">Kablosuz</string>
     <string name="home_action_connect_wireless_dongle">Kablosuz bağlan</string>
     <string name="join_wifi_before_server_search">Aramadan önce WiFi\'ye bağlan</string>
-    <string name="join_wifi_before_server_search_summary">Ünite henüz WiFi\'de değilse WiFi tuşu bağlanmasını bekler.</string>
-    <string name="join_wifi_before_server_search_help">WiFi tuşu Headunit Sunucusunu bu ünitenin WiFi ağında arar. Telefonun erişim noktasına henüz bağlanmamış bir ünitede aranacak ağ yoktur, bu yüzden deneme hemen biterdi. Bu açıkken tuş Android\'den WiFi taraması ister, ünite bağlanana kadar bekler, sonra arar. Ağı Android seçer: telefonun erişim noktasını önce bu ünitenin WiFi ayarlarına kaydedin. WiFi kapalıysa uygulama açmanızı ister.</string>
+    <string name="join_wifi_before_server_search_summary">Ünite WiFi\'de değilken WiFi taranır, bağlanınca hemen aranır.</string>
+    <string name="join_wifi_before_server_search_help">Headunit Sunucusu telefonu bu ünitenin WiFi ağında bulur; ünite telefonun erişim noktasına bağlanana kadar aranacak bir şey yoktur ve Android 10 üniteler kendi başına bağlanmak için bir dakika kadar bekleyebilir. Bu açıkken, ünite WiFi\'de değilse uygulama aramak yerine Android\'den WiFi taraması ister ve bir ağa bağlanır bağlanmaz arar: hem açılışta hem WiFi tuşuna bastığınızda. Ağı Android seçer: telefonun erişim noktasını önce bu ünitenin WiFi ayarlarına kaydedin. WiFi kapalıyken tuşa basarsanız uygulama açmanızı ister.</string>
     <string name="join_wifi_timeout">WiFi bağlanma zaman aşımı</string>
     <string name="join_wifi_timeout_help">WiFi tuşunun bu ünitenin WiFi\'ye bağlanmasını ne kadar bekleyeceği, 10 ile 120 saniye arası. Süre dolunca uygulama yine de bir kez arar.</string>
     <string name="join_wifi_waiting">Önce WiFi\'ye bağlanılıyor…</string>

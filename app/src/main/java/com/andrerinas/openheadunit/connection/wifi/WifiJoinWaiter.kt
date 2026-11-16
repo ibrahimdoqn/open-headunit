@@ -19,12 +19,14 @@ import androidx.core.content.ContextCompat
 import com.andrerinas.openheadunit.utils.AppLog
 
 /**
- * Holds the Headunit Server's one-shot search until this unit has joined a WiFi network.
+ * Waits for this unit to join a WiFi network, for the Headunit Server's searches.
  *
  * While it waits it asks the platform for scans, which is what makes it join a saved network
- * sooner; it does not pick a network itself. Pacing comes from [WifiJoinWaitPolicy].
+ * sooner; it does not pick a network itself. Pacing comes from [WifiJoinWaitPolicy]. It never
+ * gives up on its own: the background search loop waits as long as it takes, and the WiFi
+ * button bounds its own wait.
  *
- * One wait at a time, on the main thread. Starting a new one replaces the old.
+ * One wait at a time, on the main thread. [start] while waiting keeps the scans going.
  */
 class WifiJoinWaiter(context: Context) {
 
@@ -36,7 +38,6 @@ class WifiJoinWaiter(context: Context) {
     private var callback: ConnectivityManager.NetworkCallback? = null
     private var receiver: BroadcastReceiver? = null
     private var onJoined: (() -> Unit)? = null
-    private var onTimeout: (() -> Unit)? = null
     private var scanIndex = 0
     private var startedAtMs = 0L
 
@@ -50,40 +51,33 @@ class WifiJoinWaiter(context: Context) {
         }
     }
 
-    private val timeoutTick = Runnable {
-        val then = onTimeout ?: return@Runnable
-        AppLog.w("WifiJoinWaiter: no WiFi network after ${elapsedSec()}s")
-        stop()
-        then()
-    }
-
     fun isWifiConnected(): Boolean = isWifiConnected(context)
 
     /**
-     * Starts waiting up to [timeoutSec]. [onJoined] runs once the join has settled, [onTimeout] if
-     * it never comes, and [onWifiOff] at once when WiFi is off and this app cannot switch it on
-     * (Android 10 and newer); the wait goes on, so switching it on by hand still completes it.
+     * Starts waiting, or keeps the wait already running; [onJoined] runs once the join has
+     * settled. Already waiting, the scan schedule carries on: restarting it would spend the
+     * platform's scan budget again for nothing.
      */
-    fun start(timeoutSec: Int, onJoined: () -> Unit, onTimeout: () -> Unit, onWifiOff: () -> Unit) {
-        stop()
+    fun start(reason: String, onJoined: () -> Unit) {
+        if (isWaiting) {
+            this.onJoined = onJoined
+            AppLog.d("WifiJoinWaiter: already waiting ($reason)")
+            return
+        }
         this.onJoined = onJoined
-        this.onTimeout = onTimeout
         scanIndex = 0
         startedAtMs = SystemClock.elapsedRealtime()
-        AppLog.i("WifiJoinWaiter: not on WiFi; waiting up to ${timeoutSec}s before the Headunit Server search")
-        if (!ensureWifiEnabled()) onWifiOff()
+        AppLog.i("WifiJoinWaiter: not on WiFi; scanning until a WiFi network is joined ($reason)")
         registerListener()
         handler.post(scanTick)
-        handler.postDelayed(timeoutTick, timeoutSec * 1000L)
     }
 
     /** Ends the wait without calling anything back. Safe when nothing is waiting. */
     fun stop() {
         if (!isWaiting) return
+        AppLog.i("WifiJoinWaiter: stopped after ${elapsedSec()}s")
         onJoined = null
-        onTimeout = null
         handler.removeCallbacks(scanTick)
-        handler.removeCallbacks(timeoutTick)
         callback?.let { try { cm?.unregisterNetworkCallback(it) } catch (_: Exception) {} }
         callback = null
         receiver?.let { try { context.unregisterReceiver(it) } catch (_: Exception) {} }
@@ -99,11 +93,16 @@ class WifiJoinWaiter(context: Context) {
 
     private fun elapsedSec() = (SystemClock.elapsedRealtime() - startedAtMs) / 1000
 
-    /** False when WiFi is off and stays off; below Android 10 the app may still switch it on. */
+    /**
+     * Whether WiFi is on, switching it on first when the user asked for a connection. Below
+     * Android 10 the app may switch it on itself; above it only the WiFi panel can ask, which is
+     * opened only for a user's press, never for the background loop.
+     */
     @SuppressLint("MissingPermission")
-    private fun ensureWifiEnabled(): Boolean {
+    fun ensureWifiEnabled(userAsked: Boolean): Boolean {
         val w = wifi ?: return true
         if (w.isWifiEnabled) return true
+        if (!userAsked) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             @Suppress("DEPRECATION")
             val on = try { w.setWifiEnabled(true) } catch (_: Exception) { false }
@@ -112,8 +111,6 @@ class WifiJoinWaiter(context: Context) {
                 return true
             }
         } else {
-            // The panel is the one way left to ask; the user just pressed the button, so the app
-            // is in the foreground and may open it.
             try {
                 context.startActivity(Intent(SystemSettings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } catch (e: Exception) {

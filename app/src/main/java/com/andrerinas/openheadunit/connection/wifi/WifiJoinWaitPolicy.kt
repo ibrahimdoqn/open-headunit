@@ -32,6 +32,17 @@ object WifiJoinWaitPolicy {
     /** Only a unit that is not on WiFi yet waits; one that is searches at once, as before. */
     fun shouldWait(enabled: Boolean, wifiConnected: Boolean): Boolean = enabled && !wifiConnected
 
+    /**
+     * Whether the Headunit Server's background search loop parks instead of sweeping.
+     *
+     * Off WiFi the sweep has no subnet of its own: it either gives up or walks whatever other
+     * interface is up, every 10 s, and does nothing to bring the join any closer. Parked, the loop
+     * asks for WiFi scans instead and comes back the moment a WiFi network arrives. Only Auto:
+     * the other modes bring their own network up, or never search at all.
+     */
+    fun shouldParkDiscovery(isHeadunitServerAuto: Boolean, enabled: Boolean, wifiConnected: Boolean): Boolean =
+        isHeadunitServerAuto && shouldWait(enabled, wifiConnected)
+
     /** Time from the start of the wait to scan number [index], counting from zero. */
     fun scanAtMs(index: Int): Long {
         require(index >= 0) { "index must not be negative" }

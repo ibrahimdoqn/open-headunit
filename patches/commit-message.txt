@@ -6,8 +6,14 @@ the search ended at once and the user had to press again. Android 10
 units are the slow case: the platform's reconnect scans back off while
 nothing is connected, so a saved hotspot can sit in range for a minute.
 
+The background search loop has the same blind spot: every 10 s it
+sweeps whatever interface is up, whether or not the unit is on WiFi.
+
 With "Join WiFi before searching" on (Wireless Connection, Headunit
-Server, Auto; on by default), the button:
+Server, Auto; on by default), while the unit is not on WiFi the loop
+parks instead of sweeping, asks Android for WiFi scans, and resumes the
+moment a WiFi network is joined - so the phone is found at startup
+without pressing anything. The WiFi button:
 - searches at once, as before, when the unit is already on WiFi;
 - otherwise asks Android to scan for WiFi, paced to the foreground
   budget of four scans in two minutes (WifiJoinWaitPolicy), and waits

@@ -17,7 +17,11 @@ Ayarlar → **Kablosuz bağlantı** → Headunit Server → **Otomatik** altınd
 - **Aramadan önce WiFi'ye bağlan** (varsayılan: açık)
 - **WiFi bağlanma zaman aşımı** (10–120 sn, varsayılan 30 sn)
 
-Açıkken **WiFi ile bağlan** tuşu şunları yapar:
+Açıkken, ünite WiFi'de değilse **arka plandaki telefon araması** boşa
+aramak yerine durur, Android'den WiFi taraması ister ve WiFi bağlandığı an
+aramaya devam eder. Bu açılışta da çalışır; tuşa basmak gerekmez.
+
+**WiFi ile bağlan** tuşu ayrıca şunları yapar:
 
 1. Ünite WiFi'ye zaten bağlıysa eskisi gibi hemen arar.
 2. Bağlı değilse Android'den WiFi taraması ister. Taramalar, Android'in iki dakikada dört tarama sınırına göre zamanlanır.

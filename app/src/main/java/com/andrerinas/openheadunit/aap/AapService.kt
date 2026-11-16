@@ -182,7 +182,10 @@ class AapService : Service() {
     }
 
     private val wifiLauncherManager = WifiLauncherManager(this)
-    private val wifiJoinWaiter by lazy { WifiJoinWaiter(this) }
+    /** Built on first use; stop paths read [wifiJoinWaiterIfBuilt] so they never create one. */
+    private var wifiJoinWaiterIfBuilt: WifiJoinWaiter? = null
+    private val wifiJoinWaiter: WifiJoinWaiter
+        get() = wifiJoinWaiterIfBuilt ?: WifiJoinWaiter(this).also { wifiJoinWaiterIfBuilt = it }
 
     /**
      * Counts this unit's own WiFi scans into the log. Nothing acts on it; it exists so a reporter's
@@ -2814,11 +2817,54 @@ class AapService : Service() {
         }
     }
 
+    /** The background search loop is parked until a WiFi network arrives. */
+    private var discoveryParkedForWifi = false
+    /** The WiFi button's one sweep is held until a WiFi network arrives. */
+    private var oneShotAwaitingWifi = false
+    private var oneShotWifiTimeoutJob: Job? = null
+
     /**
-     * The WiFi button's one sweep for the Headunit Server. The sweep probes this unit's own
-     * subnet, so on a unit that has not joined the phone's hotspot yet it found nothing and ended.
-     * With [Settings.joinWifiBeforeServerSearch] on, the sweep waits for the join instead, and the
-     * home card shows the wait as "Preparing the network". See [WifiJoinWaitPolicy].
+     * Asked by the background search loop before each sweep. Off WiFi on Headunit Server Auto,
+     * the sweep has nothing to walk, so the loop parks here and asks for WiFi scans instead;
+     * [onWifiJoinedForSearch] brings it back. True means parked: do not sweep.
+     */
+    fun parkDiscoveryUntilWifi(): Boolean {
+        val settings = App.provide(this).settings
+        val park = WifiJoinWaitPolicy.shouldParkDiscovery(
+            isHeadunitServerAuto = settings.wifiConnectionMode == WifiLauncherMode.AUTO,
+            enabled = settings.joinWifiBeforeServerSearch,
+            wifiConnected = wifiJoinWaiter.isWifiConnected()
+        )
+        if (!park) return false
+        if (!discoveryParkedForWifi) {
+            AppLog.i("AapService: not on WiFi; the Headunit Server search waits for a WiFi network")
+            discoveryParkedForWifi = true
+        }
+        // Not userAsked: nothing may open the WiFi panel over the screen at startup.
+        if (!wifiJoinWaiter.ensureWifiEnabled(userAsked = false)) {
+            AppLog.d("AapService: WiFi is off; scans resume once it is switched on")
+        }
+        wifiJoinWaiter.start("background search", ::onWifiJoinedForSearch)
+        return true
+    }
+
+    /**
+     * The search loop is gone: the status pill's X, a stop command, or a mode change, all of
+     * which take the launcher down. The button's wait goes with it; a press re-arms the launcher
+     * before it starts waiting, so its own restart does not land here afterwards.
+     */
+    fun onDiscoveryStopped() {
+        if (discoveryParkedForWifi || oneShotAwaitingWifi) {
+            AppLog.i("AapService: the Headunit Server search stopped; no longer waiting for WiFi")
+        }
+        cancelWifiJoinWaits()
+    }
+
+    /**
+     * The WiFi button's one sweep for the Headunit Server. On a unit that has not joined the
+     * phone's hotspot yet the sweep found nothing and ended; with
+     * [Settings.joinWifiBeforeServerSearch] on it waits for the join instead, up to
+     * [Settings.joinWifiTimeout], and the home card shows the wait as "Preparing the network".
      */
     private fun searchHeadunitServerOnceOnWifi(settings: Settings) {
         if (!WifiJoinWaitPolicy.shouldWait(settings.joinWifiBeforeServerSearch, wifiJoinWaiter.isWifiConnected())) {
@@ -2826,29 +2872,57 @@ class AapService : Service() {
             return
         }
         ConnectionStageTracker.beginAttempt(ConnectionStage.PREPARING_NETWORK)
-        ToastUtils.showToast(this, getString(R.string.join_wifi_waiting))
-        val search = search@{ reason: String ->
-            if (isDestroying || commManager.isBusy) {
-                AppLog.i("AapService: WiFi wait ended ($reason), but a connection is already under way")
-                return@search
-            }
-            AppLog.i("AapService: WiFi wait ended ($reason); searching for the Headunit Server")
+        if (wifiJoinWaiter.ensureWifiEnabled(userAsked = true)) {
+            ToastUtils.showToast(this, getString(R.string.join_wifi_waiting))
+        } else {
+            ToastUtils.showToast(this, getString(R.string.join_wifi_turn_on), android.widget.Toast.LENGTH_LONG, force = true)
+        }
+        oneShotAwaitingWifi = true
+        wifiJoinWaiter.start("WiFi button", ::onWifiJoinedForSearch)
+        oneShotWifiTimeoutJob?.cancel()
+        oneShotWifiTimeoutJob = serviceScope.launch {
+            delay(settings.joinWifiTimeout * 1000L)
+            if (!oneShotAwaitingWifi) return@launch
+            oneShotAwaitingWifi = false
+            AppLog.w("AapService: no WiFi network within ${settings.joinWifiTimeout}s of the WiFi button")
+            ToastUtils.showToast(this@AapService, getString(R.string.join_wifi_timed_out), android.widget.Toast.LENGTH_LONG, force = true)
+            // Still the one sweep the button has always made. The background loop, if parked,
+            // keeps waiting for the join on its own.
+            if (!discoveryParkedForWifi) wifiJoinWaiterIfBuilt?.stop()
+            if (isDestroying || commManager.isBusy) return@launch
             ConnectionStageTracker.report(ConnectionStage.SEARCHING)
             wifiLauncherManager.startDiscovery(oneShot = true)
         }
-        wifiJoinWaiter.start(
-            timeoutSec = settings.joinWifiTimeout,
-            onJoined = { search("joined") },
-            onTimeout = {
-                ToastUtils.showToast(this, getString(R.string.join_wifi_timed_out), android.widget.Toast.LENGTH_LONG, force = true)
-                // Still the one sweep the button has always made: the network may have come up
-                // in a way the callback did not report.
-                search("timeout")
-            },
-            onWifiOff = {
-                ToastUtils.showToast(this, getString(R.string.join_wifi_turn_on), android.widget.Toast.LENGTH_LONG, force = true)
-            }
-        )
+    }
+
+    /** A WiFi network arrived while the loop, the button, or both were waiting for it. */
+    private fun onWifiJoinedForSearch() {
+        oneShotWifiTimeoutJob?.cancel()
+        oneShotWifiTimeoutJob = null
+        val resumeLoop = discoveryParkedForWifi
+        val oneShot = oneShotAwaitingWifi
+        discoveryParkedForWifi = false
+        oneShotAwaitingWifi = false
+        if (isDestroying || commManager.isBusy) {
+            AppLog.i("AapService: joined WiFi, but a connection is already under way")
+            return
+        }
+        AppLog.i("AapService: joined WiFi; searching for the Headunit Server (loop=$resumeLoop, button=$oneShot)")
+        ConnectionStageTracker.report(ConnectionStage.SEARCHING)
+        // The loop's own first sweep is the button's sweep too: one probe of the server at a time.
+        when {
+            resumeLoop -> wifiLauncherManager.startDiscovery(oneShot = false)
+            oneShot -> wifiLauncherManager.startDiscovery(oneShot = true)
+        }
+    }
+
+    /** The user stopped wireless, or the service is going: drop every wait. */
+    private fun cancelWifiJoinWaits() {
+        oneShotWifiTimeoutJob?.cancel()
+        oneShotWifiTimeoutJob = null
+        oneShotAwaitingWifi = false
+        discoveryParkedForWifi = false
+        wifiJoinWaiterIfBuilt?.stop()
     }
 
     private fun cancelAllBtAutoDisconnects() {
@@ -3519,7 +3593,7 @@ class AapService : Service() {
 
     @SuppressLint("WrongConstant")
     override fun onDestroy() {
-        wifiJoinWaiter.stop()
+        cancelWifiJoinWaits()
         closeRetainedHct()
         AppLog.i("AapService destroying... (wakeLock held=${bootWakeLock?.isHeld == true})")
         FloatingButtonManager.removeOverlay(this)
@@ -3856,7 +3930,7 @@ class AapService : Service() {
 
                 // A second press while the WiFi join is pending: restarting the launcher now would
                 // only drop the step on screen and start the wait over.
-                if (mode == WifiLauncherMode.AUTO && wifiJoinWaiter.isWaiting) {
+                if (mode == WifiLauncherMode.AUTO && oneShotAwaitingWifi) {
                     AppLog.i("AapService: still waiting for WiFi; the press changes nothing")
                     ToastUtils.showToast(this, getString(R.string.join_wifi_still_waiting))
                     return START_STICKY
@@ -3874,11 +3948,9 @@ class AapService : Service() {
                     searchHeadunitServerOnceOnWifi(settings)
             }
             ACTION_STOP_WIRELESS         -> {
-                wifiJoinWaiter.stop()
                 stopWirelessForCommand(intent?.getBooleanExtra(EXTRA_SETTINGS_REARM, false) == true)
             }
             ACTION_CANCEL_WIRELESS       -> {
-                wifiJoinWaiter.stop()
                 commManager.cancelPendingSettingsRestart()
                 usbCheckPendingForSettings = false
                 bluetoothLaunchPendingForSettings = false

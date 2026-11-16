@@ -5,7 +5,7 @@
 - Allow embedding the projection activity, thanks to @codepdbh
 - Feat: Send volume buttons to the phone, and add speed-dependent volume, thanks to @Megalodon-sharky
 - Feat(usb): add wireless dongle display option for home screen
-- Headunit Server: the WiFi button joins WiFi first when the unit is not on a network yet, then searches
+- Headunit Server: while the unit is not on WiFi, scan for WiFi instead of searching, and search the moment it joins, at startup and from the WiFi button
 
 ### 4.0.0
 - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar
