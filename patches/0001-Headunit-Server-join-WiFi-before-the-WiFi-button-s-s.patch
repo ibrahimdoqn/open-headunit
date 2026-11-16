@@ -1,6 +1,6 @@
-From 1d0e3284198bc5376a4aac7af0fb4c1f01bdb6b7 Mon Sep 17 00:00:00 2001
+From 38db1195fba9a928ede82271e7e4e3c5eec253a5 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Mon, 16 Nov 2026 21:58:10 +0000
+Date: Mon, 16 Nov 2026 23:27:30 +0000
 Subject: [PATCH] Headunit Server: join WiFi before the WiFi button's search
 
 The WiFi button's one-shot search probes this unit's own subnet. A unit
@@ -50,7 +50,7 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
 ---
  CHANGELOG.md                                  |   2 +
  README.md                                     |   1 +
- .../andrerinas/openheadunit/aap/AapService.kt | 174 +++++++-
+ .../andrerinas/openheadunit/aap/AapService.kt | 179 +++++++-
  .../connection/ConnectionStage.kt             |   9 +
  .../connection/ConnectionStagePolicy.kt       |  19 +
  .../connection/ConnectionStageTracker.kt      |   9 +
@@ -58,7 +58,7 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
  .../connection/wifi/WifiJoinWaitPolicy.kt     |  55 +++
  .../connection/wifi/WifiJoinWaiter.kt         | 193 ++++++++
  .../wifi/WifiLauncherSharedServices.kt        |  18 +
- .../autoconnect/HeadunitServerAutoConnect.kt  | 412 ++++++++++++++++++
+ .../autoconnect/HeadunitServerAutoConnect.kt  | 415 ++++++++++++++++++
  .../HeadunitServerAutoConnectPolicy.kt        | 126 ++++++
  .../openheadunit/main/HomeFragment.kt         |  56 ++-
  .../openheadunit/main/HomePrimaryPolicy.kt    |   5 +
@@ -96,7 +96,7 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
  .../connection/wifi/WifiJoinWaitPolicyTest.kt |  62 +++
  .../HeadunitServerAutoConnectPolicyTest.kt    | 105 +++++
  .../autoconnect/HeadunitServerStagesTest.kt   |  89 ++++
- 48 files changed, 1888 insertions(+), 10 deletions(-)
+ 48 files changed, 1896 insertions(+), 10 deletions(-)
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
@@ -131,7 +131,7 @@ index 51a26590..b426b4d0 100644
  #### 4. Wireless Helper
  - Our companion app triggers the wireless connection automatically in the background.
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt b/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
-index 3af63e6c..7cc3a4f6 100644
+index 3af63e6c..98587414 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
 @@ -125,6 +125,9 @@ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherManager
@@ -373,7 +373,19 @@ index 3af63e6c..7cc3a4f6 100644
              }
              ACTION_STOP_WIRELESS         -> {
                  stopWirelessForCommand(intent?.getBooleanExtra(EXTRA_SETTINGS_REARM, false) == true)
-@@ -4551,6 +4716,11 @@ class AapService : Service() {
+@@ -4110,6 +4275,11 @@ class AapService : Service() {
+                     wirelessRearmPendingForSettings = true
+                     AppLog.i("AapService: Bluetooth auto-start while the settings screen is open; " +
+                         "re-arming when it closes.")
++                } else if (settings.wifiConnectionMode == WifiLauncherMode.AUTO && huAutoConnect.isCountingDown) {
++                    // The phone arrived during Headunit Server's startup countdown: that is the
++                    // countdown's "Connect now", so the card and the search stay one attempt.
++                    AppLog.i("AapService: Bluetooth auto-start during the Headunit Server countdown; connecting now")
++                    huAutoConnect.connectNow()
+                 } else if (actions.forceRearmWireless) {
+                     wifiLauncherManager.setActiveFromSettings(force = true)
+                 } else if (networkComingUp == true) {
+@@ -4551,6 +4721,11 @@ class AapService : Service() {
          const val ACTION_START_WIRELESS_SCAN       = "com.andrerinas.openheadunit.ACTION_START_WIRELESS_SCAN"
          const val ACTION_STOP_WIRELESS             = "com.andrerinas.openheadunit.ACTION_STOP_WIRELESS"
          const val ACTION_CANCEL_WIRELESS           = "com.andrerinas.openheadunit.ACTION_CANCEL_WIRELESS"
@@ -866,10 +878,10 @@ index 8cae2f2f..57bfc15a 100644
  
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
 new file mode 100644
-index 00000000..06d5deb9
+index 00000000..61c30e89
 --- /dev/null
 +++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
-@@ -0,0 +1,412 @@
+@@ -0,0 +1,415 @@
 +package com.andrerinas.openheadunit.connection.wifi.autoconnect
 +
 +import android.annotation.SuppressLint
@@ -1003,6 +1015,8 @@ index 00000000..06d5deb9
 +        serverClosedToldThisRun = false
 +        arm()
 +    }
++
++    val isCountingDown: Boolean get() = countdownJob?.isActive == true
 +
 +    /** The card's "Connect now": skip what is left of the countdown. */
 +    fun connectNow() {
@@ -1217,7 +1231,8 @@ index 00000000..06d5deb9
 +
 +    private fun onDisconnected() {
 +        if (tHandshake == 0L) return
-+        if (!isAuto) {
++        if (!isAuto || userExited()) {
++            // Leaving Android Auto means "not now": no quick retries behind the driver's back.
 +            resetTimeline()
 +            return
 +        }
