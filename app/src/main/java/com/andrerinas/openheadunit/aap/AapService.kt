@@ -4275,6 +4275,11 @@ class AapService : Service() {
                     wirelessRearmPendingForSettings = true
                     AppLog.i("AapService: Bluetooth auto-start while the settings screen is open; " +
                         "re-arming when it closes.")
+                } else if (settings.wifiConnectionMode == WifiLauncherMode.AUTO && huAutoConnect.isCountingDown) {
+                    // The phone arrived during Headunit Server's startup countdown: that is the
+                    // countdown's "Connect now", so the card and the search stay one attempt.
+                    AppLog.i("AapService: Bluetooth auto-start during the Headunit Server countdown; connecting now")
+                    huAutoConnect.connectNow()
                 } else if (actions.forceRearmWireless) {
                     wifiLauncherManager.setActiveFromSettings(force = true)
                 } else if (networkComingUp == true) {

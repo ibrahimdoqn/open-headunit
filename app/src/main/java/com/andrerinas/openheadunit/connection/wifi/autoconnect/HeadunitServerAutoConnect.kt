@@ -132,6 +132,8 @@ class HeadunitServerAutoConnect(
         arm()
     }
 
+    val isCountingDown: Boolean get() = countdownJob?.isActive == true
+
     /** The card's "Connect now": skip what is left of the countdown. */
     fun connectNow() {
         if (countdownJob?.isActive != true) return
@@ -345,7 +347,8 @@ class HeadunitServerAutoConnect(
 
     private fun onDisconnected() {
         if (tHandshake == 0L) return
-        if (!isAuto) {
+        if (!isAuto || userExited()) {
+            // Leaving Android Auto means "not now": no quick retries behind the driver's back.
             resetTimeline()
             return
         }
