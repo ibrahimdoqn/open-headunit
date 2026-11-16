@@ -1,0 +1,366 @@
+From 4386374031972ade1cf993e10a7758a4424a3ab8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 16 Nov 2026 14:07:09 +0000
+Subject: [PATCH] WiFi button: wait for a WiFi join before the Headunit Server
+ scan
+
+When the unit is not on a WiFi network yet, the WiFi button now triggers
+WiFi scans (to speed up auto-join of the phone hotspot), waits up to 60s
+for a WiFi network and only then starts the one-shot Headunit Server
+discovery. Pressing the button again while waiting cancels the wait.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ .../connection/wifi/WifiJoinWaiter.kt         | 227 ++++++++++++++++++
+ .../openheadunit/main/HomeFragment.kt         |  52 +++-
+ app/src/main/res/values-tr/strings.xml        |   5 +
+ app/src/main/res/values/strings.xml           |   5 +
+ 4 files changed, 280 insertions(+), 9 deletions(-)
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
+
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
+new file mode 100644
+index 00000000..a4e5151f
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
+@@ -0,0 +1,227 @@
++package com.andrerinas.openheadunit.connection.wifi
++
++import android.annotation.SuppressLint
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.content.IntentFilter
++import android.net.ConnectivityManager
++import android.net.Network
++import android.net.NetworkCapabilities
++import android.net.NetworkRequest
++import android.net.wifi.WifiManager
++import android.os.Build
++import android.os.Handler
++import android.os.Looper
++import android.provider.Settings as SystemSettings
++import com.andrerinas.openheadunit.utils.AppLog
++
++/**
++ * Waits for the head unit to join a WiFi network before the Headunit Server scan starts.
++ *
++ * Many aftermarket units (Android 10 especially) take a long time to auto-join the phone's
++ * hotspot on their own. A one-shot discovery sweep started before the join simply finds nothing.
++ * This helper:
++ *  1. returns at once if a WiFi network is already up,
++ *  2. otherwise turns WiFi on (only possible below Android 10) or opens the WiFi panel,
++ *  3. asks the WiFi framework for scans, which is what makes it auto-join saved networks sooner,
++ *  4. calls [onReady] as soon as a WiFi network becomes available, or [onTimeout] after [timeoutMs].
++ *
++ * Only one wait runs at a time; starting a new one cancels the previous.
++ */
++object WifiJoinWaiter {
++
++    private const val TAG = "WifiJoinWaiter"
++    private const val SCAN_INTERVAL_MS = 8_000L
++    /** Short pause after the join so DHCP and routes settle before the probe of port 5277. */
++    private const val SETTLE_DELAY_MS = 1_500L
++
++    private val handler = Handler(Looper.getMainLooper())
++    private var session: Session? = null
++
++    val isWaiting: Boolean get() = session != null
++
++    /** True when any WiFi network is connected (not only the default network). */
++    @SuppressLint("MissingPermission")
++    fun isWifiConnected(context: Context): Boolean {
++        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
++        return try {
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
++                cm.allNetworks.any { network ->
++                    cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
++                }
++            } else {
++                @Suppress("DEPRECATION")
++                cm.getNetworkInfo(ConnectivityManager.TYPE_WIFI)?.isConnected == true
++            }
++        } catch (e: Exception) {
++            AppLog.w("$TAG: could not read network state: ${e.message}")
++            false
++        }
++    }
++
++    fun cancel() {
++        session?.stop("cancelled")
++        session = null
++    }
++
++    /**
++     * Starts waiting. [onReady] / [onTimeout] / [onWifiOff] run on the main thread.
++     * [onWifiOff] is called when WiFi is disabled and the app could not turn it on itself; the
++     * wait keeps running so the join is still caught once the user switches WiFi on.
++     */
++    fun waitForWifi(
++        context: Context,
++        timeoutMs: Long,
++        onReady: () -> Unit,
++        onTimeout: () -> Unit,
++        onWifiOff: () -> Unit = {}
++    ) {
++        cancel()
++        val app = context.applicationContext
++        if (isWifiConnected(app)) {
++            AppLog.i("$TAG: WiFi already connected")
++            onReady()
++            return
++        }
++        val s = Session(app, timeoutMs, onReady, onTimeout, onWifiOff)
++        session = s
++        s.start()
++    }
++
++    private class Session(
++        val context: Context,
++        val timeoutMs: Long,
++        val onReady: () -> Unit,
++        val onTimeout: () -> Unit,
++        val onWifiOff: () -> Unit
++    ) {
++        private val wifi = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
++        private val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
++        private var callback: ConnectivityManager.NetworkCallback? = null
++        private var receiver: BroadcastReceiver? = null
++        private var finished = false
++
++        private val scanTick = object : Runnable {
++            override fun run() {
++                if (finished) return
++                requestScan()
++                handler.postDelayed(this, SCAN_INTERVAL_MS)
++            }
++        }
++
++        private val timeoutTick = Runnable {
++            if (finished) return@Runnable
++            AppLog.w("$TAG: no WiFi network after ${timeoutMs / 1000}s")
++            stop("timeout")
++            if (session === this) session = null
++            onTimeout()
++        }
++
++        fun start() {
++            AppLog.i("$TAG: waiting up to ${timeoutMs / 1000}s for a WiFi network")
++            ensureWifiEnabled()
++            registerListeners()
++            handler.post(scanTick)
++            handler.postDelayed(timeoutTick, timeoutMs)
++        }
++
++        fun stop(reason: String) {
++            if (finished) return
++            finished = true
++            AppLog.i("$TAG: stopped ($reason)")
++            handler.removeCallbacks(scanTick)
++            handler.removeCallbacks(timeoutTick)
++            callback?.let { cb -> try { cm?.unregisterNetworkCallback(cb) } catch (_: Exception) {} }
++            callback = null
++            receiver?.let { r -> try { context.unregisterReceiver(r) } catch (_: Exception) {} }
++            receiver = null
++        }
++
++        private fun joined(source: String) {
++            if (finished) return
++            AppLog.i("$TAG: WiFi joined ($source)")
++            stop("joined")
++            if (session === this) session = null
++            handler.postDelayed({ onReady() }, SETTLE_DELAY_MS)
++        }
++
++        @SuppressLint("MissingPermission")
++        private fun ensureWifiEnabled() {
++            val w = wifi ?: return
++            if (w.isWifiEnabled) return
++            // setWifiEnabled() still works for apps below Android 10; above it always returns false.
++            @Suppress("DEPRECATION")
++            val turnedOn = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
++                try { w.setWifiEnabled(true) } catch (_: Exception) { false }
++            if (turnedOn) {
++                AppLog.i("$TAG: WiFi switched on")
++                return
++            }
++            AppLog.i("$TAG: WiFi is off and cannot be switched on by the app; opening the WiFi panel")
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
++                try {
++                    context.startActivity(
++                        Intent(SystemSettings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++                    )
++                } catch (e: Exception) {
++                    AppLog.w("$TAG: WiFi panel unavailable: ${e.message}")
++                }
++            }
++            onWifiOff()
++        }
++
++        @SuppressLint("MissingPermission")
++        private fun requestScan() {
++            val w = wifi ?: return
++            if (!w.isWifiEnabled) return
++            // Deprecated and throttled (4 per 2 min in the foreground), but still honoured, and the
++            // scan results it produces are what the framework's auto-join acts on.
++            try {
++                @Suppress("DEPRECATION")
++                val ok = w.startScan()
++                AppLog.d("$TAG: startScan -> $ok")
++            } catch (e: Exception) {
++                AppLog.d("$TAG: startScan refused: ${e.message}")
++            }
++            // Below Android 10 the app may also nudge the supplicant directly.
++            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
++                try {
++                    @Suppress("DEPRECATION")
++                    w.reconnect()
++                } catch (_: Exception) {}
++            }
++        }
++
++        @SuppressLint("MissingPermission")
++        private fun registerListeners() {
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && cm != null) {
++                val cb = object : ConnectivityManager.NetworkCallback() {
++                    override fun onAvailable(network: Network) {
++                        handler.post { joined("NetworkCallback") }
++                    }
++                }
++                try {
++                    cm.registerNetworkCallback(
++                        NetworkRequest.Builder()
++                            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
++                            .build(),
++                        cb
++                    )
++                    callback = cb
++                    return
++                } catch (e: Exception) {
++                    AppLog.w("$TAG: NetworkCallback failed, falling back to broadcast: ${e.message}")
++                }
++            }
++            val r = object : BroadcastReceiver() {
++                override fun onReceive(c: Context, intent: Intent) {
++                    if (isWifiConnected(context)) joined("broadcast")
++                }
++            }
++            @Suppress("DEPRECATION")
++            context.registerReceiver(r, IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION))
++            receiver = r
++        }
++    }
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
+index 4a029c44..2cac5930 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
+@@ -78,6 +78,7 @@ import com.andrerinas.openheadunit.connection.usb.UsbPermissionAskPolicy
+ import com.andrerinas.openheadunit.connection.usb.UsbPermissionAsks
+ import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
+ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
++import com.andrerinas.openheadunit.connection.wifi.WifiJoinWaiter
+ import com.andrerinas.openheadunit.connection.wifi.WirelessSelectionPolicy
+ import kotlinx.coroutines.withContext
+ import kotlinx.coroutines.delay
+@@ -1915,6 +1916,45 @@ class HomeFragment : Fragment() {
+         }
+     }
+ 
++    // [PATCH wifi-wait] Headunit Server needs the unit on the phone's hotspot first. Units that
++    // are slow to auto-join (common on Android 10) used to run the one-shot sweep before the join
++    // and find nothing. Wait for WiFi (scanning to speed up auto-join), then start the sweep.
++    private fun startHeadunitServerScanWhenWifiUp() {
++        val ctx = requireContext().applicationContext
++        if (WifiJoinWaiter.isWaiting) {
++            WifiJoinWaiter.cancel()
++            ToastUtils.showToast(ctx, getString(R.string.wifi_wait_cancelled), Toast.LENGTH_SHORT)
++            return
++        }
++        if (!WifiJoinWaiter.isWifiConnected(ctx)) {
++            ToastUtils.showToast(ctx, getString(R.string.wifi_wait_searching), Toast.LENGTH_LONG)
++        }
++        WifiJoinWaiter.waitForWifi(
++            ctx,
++            timeoutMs = WIFI_JOIN_TIMEOUT_MS,
++            onReady = onReady@{
++                if (commManager.isConnected || AapService.scanningState.value) return@onReady
++                ToastUtils.showToast(ctx, getString(R.string.searching_headunit_server), Toast.LENGTH_SHORT)
++                if (isAdded) {
++                    (activity as? MainActivity)?.beginAutoConnect(
++                        "manual WiFi headunit server scan",
++                        MainActivity.ConnectionUiMode.OVERLAY
++                    )
++                }
++                val intent = Intent(ctx, AapService::class.java).apply {
++                    action = AapService.ACTION_START_WIRELESS_SCAN
++                }
++                ContextCompat.startForegroundService(ctx, intent)
++            },
++            onTimeout = {
++                ToastUtils.showToast(ctx, getString(R.string.wifi_wait_timeout), Toast.LENGTH_LONG)
++            },
++            onWifiOff = {
++                ToastUtils.showToast(ctx, getString(R.string.wifi_wait_turn_on), Toast.LENGTH_LONG)
++            }
++        )
++    }
++
+     private fun onWifiClicked() {
+         if (showsBringUp(HomePrimaryPolicy.Connection.WIFI)) return
+         // With a session up the wireless tile is the way back to it, the same as the USB one. It
+@@ -1931,15 +1971,7 @@ class HomeFragment : Fragment() {
+                 } else if (AapService.scanningState.value) {
+                     ToastUtils.showToast(requireContext(), getString(R.string.already_scanning), Toast.LENGTH_SHORT)
+                 } else {
+-                    ToastUtils.showToast(requireContext(), getString(R.string.searching_headunit_server), Toast.LENGTH_SHORT)
+-                    (requireActivity() as? MainActivity)?.beginAutoConnect(
+-                        "manual WiFi headunit server scan",
+-                        MainActivity.ConnectionUiMode.OVERLAY
+-                    )
+-                    val intent = Intent(requireContext(), AapService::class.java).apply {
+-                        action = AapService.ACTION_START_WIRELESS_SCAN
+-                    }
+-                    ContextCompat.startForegroundService(requireContext(), intent)
++                    startHeadunitServerScanWhenWifiUp()
+                 }
+             }
+             WifiLauncherMode.HELPER -> { // Helper (Wireless Launcher)
+@@ -3068,6 +3100,8 @@ class HomeFragment : Fragment() {
+         private const val STATE_PENDING_WIDGET_ID = "home_pending_widget_id"
+         private const val STATE_PENDING_WIDGET_PAGE = "home_pending_widget_page"
+         private const val UNAVAILABLE_FAVORITE_ALPHA = 0.45f
++        /** [PATCH wifi-wait] How long the WiFi button waits for the unit to join a network. */
++        private const val WIFI_JOIN_TIMEOUT_MS = 60_000L
+         private var hasAutoStarted = false
+         private var hasCheckedNativeDriverSelection = false
+         var forceSelfModeLaunch = false
+diff --git a/app/src/main/res/values-tr/strings.xml b/app/src/main/res/values-tr/strings.xml
+index 083ca374..5e8abcac 100644
+--- a/app/src/main/res/values-tr/strings.xml
++++ b/app/src/main/res/values-tr/strings.xml
+@@ -1852,4 +1852,9 @@
+     <string name="usb_wireless_dongle_help">AAWireless veya Carlinkit gibi bir kablosuz USB adaptörü ile bağlanıyorsanız bunu açın. Open Headunit bir dongle’ı kablodan ayırt edemez, bu yüzden bu seçenek ana ekran etiketlerini kablodan kablosuza çevirir.</string>
+     <string name="home_subtitle_usb_dongle">Kablosuz</string>
+     <string name="home_action_connect_wireless_dongle">Kablosuz bağlan</string>
++    <!-- [PATCH wifi-wait] -->
++    <string name="wifi_wait_searching">WiFi henüz bağlı değil. Ağlar aranıyor…</string>
++    <string name="wifi_wait_turn_on">WiFi kapalı. Açın; bağlanınca Android Auto başlar.</string>
++    <string name="wifi_wait_timeout">Bir WiFi ağına bağlanılamadı. Telefonun erişim noktası açık mı?</string>
++    <string name="wifi_wait_cancelled">WiFi beklemesi durduruldu</string>
+ </resources>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 4436acb2..694f05fe 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1933,4 +1933,9 @@
+     <string name="audio_matching_phase_gradient_hint">Slow playback</string>
+     <string name="audio_matching_option" translatable="false">%1$s\n(%2$s)</string>
+     <string name="audio_matching_description">OHU remains the default. WSOLA aligns overlapping waveforms; Phase Vocoder adjusts spectral phases. Short uses a shorter analysis window. Phase Gradient integrates phase gradients to reconstruct phases. These independent methods add processing latency; their names do not rank sound quality.\n\nNative methods: PCM music. Navigation, voice responses, system sounds and AAC use OHU.\nReconnect to apply. Removed engine preferences reset to OHU.</string>
++    <!-- [PATCH wifi-wait] -->
++    <string name="wifi_wait_searching">WiFi not connected yet. Searching for networks…</string>
++    <string name="wifi_wait_turn_on">WiFi is off. Turn it on; Android Auto starts once connected.</string>
++    <string name="wifi_wait_timeout">No WiFi network joined. Is the phone hotspot on?</string>
++    <string name="wifi_wait_cancelled">Stopped waiting for WiFi</string>
+ </resources>
