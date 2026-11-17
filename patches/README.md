@@ -8,6 +8,7 @@ tutar. Upstream güncellenince patch'leri yeni sürümün üstüne yeniden uygul
 |---|---|
 | `0001-Add-a-workflow-that-builds-a-release-APK-signed-with.patch` | GitHub'da kendi anahtarınızla imzalı APK derleyen iş akışı ve `SIGNING.md` kurulum notları. |
 | `0002-Home-show-the-WiFi-network-beside-the-main-button-s-.patch` | Ana ekran: kartın WiFi simgesinin yanında bağlı ağ, bant ve sinyal (yalnızca Headunit Server). Simgeye dokunmak bir WiFi taraması ister, uzun basmak WiFi ayarlarını açar. |
+| `0003-Home-let-the-WiFi-line-use-half-the-header-s-free-wid.patch` | 0002'nin düzeltmesi: WiFi yazısı sabit 320dp yerine satırın boş alanının yarısına kadar genişler, geniş ekranda kesilmez. 0002 ile birlikte kullanılır. |
 
 Bir özelliği istemiyorsanız ilgili `.patch` dosyasını silmeniz yeterli.
 
@@ -81,3 +82,6 @@ commit'ler patch'e girmez. Yeni bir özellik ayrı bir commit olarak eklenirse k
 - `utils/HomeUiHelper.kt`: yazının rengi.
 - `res/layout/view_home_primary_card.xml`: simgenin yanındaki yazı alanı.
 - `res/values/dimens.xml`, `res/values/strings.xml`, `res/values-tr/strings.xml`
+
+**0003 (WiFi yazısının genişliği)**
+- `res/layout/view_home_primary_card.xml`, `res/values/dimens.xml`

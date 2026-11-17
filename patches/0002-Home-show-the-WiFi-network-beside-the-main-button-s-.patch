@@ -1,7 +1,7 @@
 From c7cb0a1e1480c253975ac5848a780493972aacee Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Tue, 17 Nov 2026 18:27:58 +0000
-Subject: [PATCH 2/2] Home: show the WiFi network beside the main button's icon
+Subject: [PATCH 2/3] Home: show the WiFi network beside the main button's icon
 
 Headunit Server only: the network this unit is on, its band and signal,
 or that WiFi is off or not connected. A tap on the icon or the line asks

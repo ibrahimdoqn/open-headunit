@@ -1,0 +1,57 @@
+From 41d9653c0e6d64e6220ad58a577ad8905c6a2895 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 17 Nov 2026 18:51:16 +0000
+Subject: [PATCH 3/3] Home: let the WiFi line use half the header's free width
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A fixed 320 dp cut 'name · band · signal' short on a wide 1920x720 card.
+The line now shares the row's free width with the spacer after it, so it
+grows as far as half the row and never reaches the countdown or the date
+and time in the far corner.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ app/src/main/res/layout/view_home_primary_card.xml | 8 +++++---
+ app/src/main/res/values/dimens.xml                 | 2 --
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/app/src/main/res/layout/view_home_primary_card.xml b/app/src/main/res/layout/view_home_primary_card.xml
+index 5642c122..986b9cdf 100644
+--- a/app/src/main/res/layout/view_home_primary_card.xml
++++ b/app/src/main/res/layout/view_home_primary_card.xml
+@@ -48,14 +48,16 @@
+             </FrameLayout>
+ 
+             <!-- Headunit Server only: the WiFi network this unit is on, or why there is none. A tap
+-                 asks Android for one WiFi scan, a long press opens the WiFi settings. -->
++                 asks Android for one WiFi scan, a long press opens the WiFi settings. It shares the
++                 row's free width with the spacer after it, so it never reaches the countdown or the
++                 date and time in the far corner; only a very long name ends in an ellipsis. -->
+             <TextView
+                 android:id="@+id/home_wifi_status"
+                 style="@style/HomeCardText"
+-                android:layout_width="wrap_content"
++                android:layout_width="0dp"
++                android:layout_weight="1"
+                 android:layout_marginStart="12dp"
+                 android:layout_marginLeft="12dp"
+-                android:maxWidth="@dimen/home_wifi_status_max_width"
+                 android:maxLines="1"
+                 android:ellipsize="end"
+                 android:minHeight="@dimen/home_card_icon_tile"
+diff --git a/app/src/main/res/values/dimens.xml b/app/src/main/res/values/dimens.xml
+index b5a6d190..dd7b0ece 100644
+--- a/app/src/main/res/values/dimens.xml
++++ b/app/src/main/res/values/dimens.xml
+@@ -23,8 +23,6 @@
+     <dimen name="home_card_padding_h">8dp</dimen>
+     <dimen name="home_card_padding_v">4dp</dimen>
+     <dimen name="home_card_icon_tile">32dp</dimen>
+-    <!-- The WiFi line beside the main button's icon; long names end in an ellipsis. -->
+-    <dimen name="home_wifi_status_max_width">320dp</dimen>
+     <dimen name="home_card_icon">18dp</dimen>
+     <dimen name="home_card_kicker">9sp</dimen>
+     <dimen name="home_card_title">16sp</dimen>
