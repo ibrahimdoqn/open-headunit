@@ -571,6 +571,7 @@ object HomeUiHelper {
             text = secondsLeft.toString()
         }
         val detail = rootView.findViewById<TextView>(R.id.home_primary_detail)
+        val wifiStatus = rootView.findViewById<TextView>(R.id.home_wifi_status)
         detail?.text = networkLine
         detail?.visibility = if (stage != null && !networkLine.isNullOrEmpty()) View.VISIBLE else View.GONE
         val progress = rootView.findViewById<View>(R.id.home_primary_progress)
@@ -597,7 +598,7 @@ object HomeUiHelper {
             card.background = rounded(palette.fill(color), panelRadius)
             iconTile?.background = rounded(palette.fill(shade), tileRadius)
             icon?.clearColorFilter()
-            listOf(kicker, title, subtitle, detail).forEach { it?.setTextColor(Color.WHITE) }
+            listOf(kicker, title, subtitle, detail, wifiStatus).forEach { it?.setTextColor(Color.WHITE) }
             action?.apply {
                 background = pressable(Color.WHITE, ctaRadius, palette)
                 setTextColor(ColorUtils.darkenColor(color, 0.66f))
@@ -619,6 +620,7 @@ object HomeUiHelper {
         title?.setTextColor(palette.text)
         subtitle?.setTextColor(palette.textMuted)
         detail?.setTextColor(palette.textMuted)
+        wifiStatus?.setTextColor(palette.textMuted)
         action?.apply {
             if (palette.mode == Mode.EXTREME_DARK) {
                 // An outline lights far fewer pixels than a filled button.

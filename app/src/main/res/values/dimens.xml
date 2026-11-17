@@ -23,6 +23,8 @@
     <dimen name="home_card_padding_h">8dp</dimen>
     <dimen name="home_card_padding_v">4dp</dimen>
     <dimen name="home_card_icon_tile">32dp</dimen>
+    <!-- The WiFi line beside the main button's icon; long names end in an ellipsis. -->
+    <dimen name="home_wifi_status_max_width">320dp</dimen>
     <dimen name="home_card_icon">18dp</dimen>
     <dimen name="home_card_kicker">9sp</dimen>
     <dimen name="home_card_title">16sp</dimen>

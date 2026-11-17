@@ -133,6 +133,8 @@ class HomeFragment : Fragment() {
     private var reconnectTarget: HomePrimaryPolicy.Connection? = null
     private var reconnectSecondsLeft = 0
     private var autoConnectCancelled = false
+    /** The WiFi line beside the main button's icon, Headunit Server only; live while started. */
+    private var homeWifiStatus: HomeWifiStatus? = null
     private var hasAttemptedAutoConnect = false
     private var hasAttemptedSingleUsbAutoConnect = false
     private var activeDialog: androidx.appcompat.app.AlertDialog? = null
@@ -249,6 +251,7 @@ class HomeFragment : Fragment() {
         ).forEach { id ->
             container.findViewById<View>(id)?.setOnLongClickListener { showPageMenu(widgetPage = null) }
         }
+        setupWifiStatus(container)
         setupListeners()
     }
 
@@ -441,6 +444,74 @@ class HomeFragment : Fragment() {
         cancelAutoConnectCountdown()
     }
 
+    /**
+     * The WiFi line and the icon beside it: a tap asks Android for one WiFi scan (or to turn WiFi
+     * on), a long press opens Android's WiFi settings. Both only while the line is shown.
+     */
+    private fun setupWifiStatus(container: View) {
+        homeWifiStatus = HomeWifiStatus(requireContext()) { renderWifiStatus() }
+        listOf(R.id.home_wifi_status, R.id.home_primary_icon_tile).forEach { id ->
+            container.findViewById<View>(id)?.apply {
+                setOnClickListener { onWifiStatusClicked() }
+                setOnLongClickListener {
+                    if (!wifiStatusShown()) return@setOnLongClickListener showPageMenu(widgetPage = null)
+                    homeWifiStatus?.openWifiSettings()
+                    true
+                }
+            }
+        }
+    }
+
+    private fun wifiStatusShown(): Boolean = view?.findViewById<View>(R.id.home_wifi_status)?.visibility == View.VISIBLE
+
+    private fun onWifiStatusClicked() {
+        if (!wifiStatusShown()) return
+        val status = homeWifiStatus ?: return
+        val ctx = context ?: return
+        when (status.requestScan()) {
+            HomeWifiStatus.ScanRequest.STARTED ->
+                ToastUtils.showToast(ctx, getString(R.string.home_wifi_scan_started), Toast.LENGTH_SHORT)
+            HomeWifiStatus.ScanRequest.REFUSED ->
+                ToastUtils.showToast(ctx, getString(R.string.home_wifi_scan_refused), Toast.LENGTH_LONG, force = true)
+            HomeWifiStatus.ScanRequest.WIFI_OFF -> status.askToTurnWifiOn()
+        }
+        renderWifiStatus()
+    }
+
+    private fun renderWifiStatus() {
+        val root = view ?: return
+        val text = root.findViewById<TextView>(R.id.home_wifi_status) ?: return
+        val status = homeWifiStatus ?: return
+        val ctx = context ?: return
+        val mode = App.provide(ctx).settings.wifiConnectionMode
+        val line = HomeWifiStatusPolicy.line(
+            isHeadunitServer = mode == WifiLauncherMode.AUTO || mode == WifiLauncherMode.MANUAL,
+            cardIsWifi = decision?.primary == HomePrimaryPolicy.Connection.WIFI,
+            facts = status.facts(),
+        )
+        if (line.kind == HomeWifiStatusPolicy.Kind.HIDDEN) {
+            text.visibility = View.GONE
+            return
+        }
+        text.text = when (line.kind) {
+            HomeWifiStatusPolicy.Kind.SCANNING -> getString(R.string.home_wifi_scanning)
+            HomeWifiStatusPolicy.Kind.OFF -> getString(R.string.home_wifi_off)
+            HomeWifiStatusPolicy.Kind.NOT_CONNECTED -> getString(R.string.home_wifi_not_connected)
+            else -> listOfNotNull(
+                line.ssid ?: getString(R.string.home_wifi_connected_unnamed),
+                when (line.band) {
+                    HomeWifiStatusPolicy.Band.GHZ_2_4 -> getString(R.string.home_wifi_band_24)
+                    HomeWifiStatusPolicy.Band.GHZ_5 -> getString(R.string.home_wifi_band_5)
+                    HomeWifiStatusPolicy.Band.GHZ_6 -> getString(R.string.home_wifi_band_6)
+                    null -> null
+                },
+                line.signalPercent?.let { getString(R.string.home_wifi_signal, it) },
+            ).joinToString(" · ")
+        }
+        text.contentDescription = getString(R.string.home_wifi_status_description, text.text)
+        text.visibility = View.VISIBLE
+    }
+
     private fun renderHome() {
         val ctx = context ?: return
         val root = view ?: return
@@ -478,6 +549,7 @@ class HomeFragment : Fragment() {
             networkLine = ConnectionStageTracker.network.value?.let { networkText(it) }
         )
         HomeUiHelper.fitDriverBar(root, appSettings.homeButtonScalePercent)
+        renderWifiStatus()
         renderHomeInfo()
         reportBringUpOwner()
         // Cancel, the progress bar and the step come and go with the status, so the lines that fit
@@ -2158,7 +2230,7 @@ class HomeFragment : Fragment() {
         val interior = HomePagesHintPolicy.Box(cardBox.left + padH, cardBox.top + padV, cardBox.right - padH, cardBox.bottom - padV)
         val occupied = listOf(
             R.id.home_primary_icon_tile, R.id.home_countdown, R.id.home_primary_progress,
-            R.id.home_primary_actions, R.id.home_info,
+            R.id.home_primary_actions, R.id.home_info, R.id.home_wifi_status,
         ).mapNotNull { id -> root.findViewById<View>(id)?.takeIf { it.isShown && it.width > 0 }?.let { boxIn(root, it) } } +
             listOf(R.id.home_primary_kicker, R.id.home_primary_title, R.id.home_primary_subtitle, R.id.home_primary_detail)
                 .mapNotNull { id -> root.findViewById<TextView>(id)?.takeIf { it.isShown && it.width > 0 }?.let { textBox(root, it) } }
@@ -2368,6 +2440,8 @@ class HomeFragment : Fragment() {
         // A host that is not listening holds an empty widget view, so this runs before the row is
         // built in onResume.
         HomeWidgets.startListening(requireContext())
+        homeWifiStatus?.start()
+        renderWifiStatus()
         reportBringUpOwner(started = true)
         activity?.window?.decorView?.viewTreeObserver?.addOnGlobalLayoutListener(issueBannerWatcher)
     }
@@ -2383,6 +2457,7 @@ class HomeFragment : Fragment() {
     override fun onStop() {
         super.onStop()
         HomeWidgets.stopListening()
+        homeWifiStatus?.stop()
         mainViewModel.homeShowsBringUp.value = false
         // Started again by the next render, once the home is back on screen.
         view?.let { HomeUiHelper.stopShines(it) }
