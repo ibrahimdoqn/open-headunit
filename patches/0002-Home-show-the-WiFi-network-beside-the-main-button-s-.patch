@@ -1,0 +1,612 @@
+From c7cb0a1e1480c253975ac5848a780493972aacee Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 17 Nov 2026 18:27:58 +0000
+Subject: [PATCH 2/2] Home: show the WiFi network beside the main button's icon
+
+Headunit Server only: the network this unit is on, its band and signal,
+or that WiFi is off or not connected. A tap on the icon or the line asks
+Android for one WiFi scan (or to turn WiFi on), a long press opens the
+WiFi settings. The line updates while the home is on screen.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ .../openheadunit/main/HomeFragment.kt         |  77 +++++++-
+ .../openheadunit/main/HomeWifiStatus.kt       | 184 ++++++++++++++++++
+ .../openheadunit/main/HomeWifiStatusPolicy.kt |  68 +++++++
+ .../openheadunit/utils/HomeUiHelper.kt        |   4 +-
+ .../res/layout/view_home_primary_card.xml     |  21 ++
+ app/src/main/res/values-tr/strings.xml        |  11 ++
+ app/src/main/res/values/dimens.xml            |   2 +
+ app/src/main/res/values/strings.xml           |  11 ++
+ .../main/HomeWifiStatusPolicyTest.kt          |  71 +++++++
+ 9 files changed, 447 insertions(+), 2 deletions(-)
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatus.kt
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicy.kt
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicyTest.kt
+
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
+index 4a029c44..087cb655 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
+@@ -133,6 +133,8 @@ class HomeFragment : Fragment() {
+     private var reconnectTarget: HomePrimaryPolicy.Connection? = null
+     private var reconnectSecondsLeft = 0
+     private var autoConnectCancelled = false
++    /** The WiFi line beside the main button's icon, Headunit Server only; live while started. */
++    private var homeWifiStatus: HomeWifiStatus? = null
+     private var hasAttemptedAutoConnect = false
+     private var hasAttemptedSingleUsbAutoConnect = false
+     private var activeDialog: androidx.appcompat.app.AlertDialog? = null
+@@ -249,6 +251,7 @@ class HomeFragment : Fragment() {
+         ).forEach { id ->
+             container.findViewById<View>(id)?.setOnLongClickListener { showPageMenu(widgetPage = null) }
+         }
++        setupWifiStatus(container)
+         setupListeners()
+     }
+ 
+@@ -441,6 +444,74 @@ class HomeFragment : Fragment() {
+         cancelAutoConnectCountdown()
+     }
+ 
++    /**
++     * The WiFi line and the icon beside it: a tap asks Android for one WiFi scan (or to turn WiFi
++     * on), a long press opens Android's WiFi settings. Both only while the line is shown.
++     */
++    private fun setupWifiStatus(container: View) {
++        homeWifiStatus = HomeWifiStatus(requireContext()) { renderWifiStatus() }
++        listOf(R.id.home_wifi_status, R.id.home_primary_icon_tile).forEach { id ->
++            container.findViewById<View>(id)?.apply {
++                setOnClickListener { onWifiStatusClicked() }
++                setOnLongClickListener {
++                    if (!wifiStatusShown()) return@setOnLongClickListener showPageMenu(widgetPage = null)
++                    homeWifiStatus?.openWifiSettings()
++                    true
++                }
++            }
++        }
++    }
++
++    private fun wifiStatusShown(): Boolean = view?.findViewById<View>(R.id.home_wifi_status)?.visibility == View.VISIBLE
++
++    private fun onWifiStatusClicked() {
++        if (!wifiStatusShown()) return
++        val status = homeWifiStatus ?: return
++        val ctx = context ?: return
++        when (status.requestScan()) {
++            HomeWifiStatus.ScanRequest.STARTED ->
++                ToastUtils.showToast(ctx, getString(R.string.home_wifi_scan_started), Toast.LENGTH_SHORT)
++            HomeWifiStatus.ScanRequest.REFUSED ->
++                ToastUtils.showToast(ctx, getString(R.string.home_wifi_scan_refused), Toast.LENGTH_LONG, force = true)
++            HomeWifiStatus.ScanRequest.WIFI_OFF -> status.askToTurnWifiOn()
++        }
++        renderWifiStatus()
++    }
++
++    private fun renderWifiStatus() {
++        val root = view ?: return
++        val text = root.findViewById<TextView>(R.id.home_wifi_status) ?: return
++        val status = homeWifiStatus ?: return
++        val ctx = context ?: return
++        val mode = App.provide(ctx).settings.wifiConnectionMode
++        val line = HomeWifiStatusPolicy.line(
++            isHeadunitServer = mode == WifiLauncherMode.AUTO || mode == WifiLauncherMode.MANUAL,
++            cardIsWifi = decision?.primary == HomePrimaryPolicy.Connection.WIFI,
++            facts = status.facts(),
++        )
++        if (line.kind == HomeWifiStatusPolicy.Kind.HIDDEN) {
++            text.visibility = View.GONE
++            return
++        }
++        text.text = when (line.kind) {
++            HomeWifiStatusPolicy.Kind.SCANNING -> getString(R.string.home_wifi_scanning)
++            HomeWifiStatusPolicy.Kind.OFF -> getString(R.string.home_wifi_off)
++            HomeWifiStatusPolicy.Kind.NOT_CONNECTED -> getString(R.string.home_wifi_not_connected)
++            else -> listOfNotNull(
++                line.ssid ?: getString(R.string.home_wifi_connected_unnamed),
++                when (line.band) {
++                    HomeWifiStatusPolicy.Band.GHZ_2_4 -> getString(R.string.home_wifi_band_24)
++                    HomeWifiStatusPolicy.Band.GHZ_5 -> getString(R.string.home_wifi_band_5)
++                    HomeWifiStatusPolicy.Band.GHZ_6 -> getString(R.string.home_wifi_band_6)
++                    null -> null
++                },
++                line.signalPercent?.let { getString(R.string.home_wifi_signal, it) },
++            ).joinToString(" · ")
++        }
++        text.contentDescription = getString(R.string.home_wifi_status_description, text.text)
++        text.visibility = View.VISIBLE
++    }
++
+     private fun renderHome() {
+         val ctx = context ?: return
+         val root = view ?: return
+@@ -478,6 +549,7 @@ class HomeFragment : Fragment() {
+             networkLine = ConnectionStageTracker.network.value?.let { networkText(it) }
+         )
+         HomeUiHelper.fitDriverBar(root, appSettings.homeButtonScalePercent)
++        renderWifiStatus()
+         renderHomeInfo()
+         reportBringUpOwner()
+         // Cancel, the progress bar and the step come and go with the status, so the lines that fit
+@@ -2158,7 +2230,7 @@ class HomeFragment : Fragment() {
+         val interior = HomePagesHintPolicy.Box(cardBox.left + padH, cardBox.top + padV, cardBox.right - padH, cardBox.bottom - padV)
+         val occupied = listOf(
+             R.id.home_primary_icon_tile, R.id.home_countdown, R.id.home_primary_progress,
+-            R.id.home_primary_actions, R.id.home_info,
++            R.id.home_primary_actions, R.id.home_info, R.id.home_wifi_status,
+         ).mapNotNull { id -> root.findViewById<View>(id)?.takeIf { it.isShown && it.width > 0 }?.let { boxIn(root, it) } } +
+             listOf(R.id.home_primary_kicker, R.id.home_primary_title, R.id.home_primary_subtitle, R.id.home_primary_detail)
+                 .mapNotNull { id -> root.findViewById<TextView>(id)?.takeIf { it.isShown && it.width > 0 }?.let { textBox(root, it) } }
+@@ -2368,6 +2440,8 @@ class HomeFragment : Fragment() {
+         // A host that is not listening holds an empty widget view, so this runs before the row is
+         // built in onResume.
+         HomeWidgets.startListening(requireContext())
++        homeWifiStatus?.start()
++        renderWifiStatus()
+         reportBringUpOwner(started = true)
+         activity?.window?.decorView?.viewTreeObserver?.addOnGlobalLayoutListener(issueBannerWatcher)
+     }
+@@ -2383,6 +2457,7 @@ class HomeFragment : Fragment() {
+     override fun onStop() {
+         super.onStop()
+         HomeWidgets.stopListening()
++        homeWifiStatus?.stop()
+         mainViewModel.homeShowsBringUp.value = false
+         // Started again by the next render, once the home is back on screen.
+         view?.let { HomeUiHelper.stopShines(it) }
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatus.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatus.kt
+new file mode 100644
+index 00000000..9e024fca
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatus.kt
+@@ -0,0 +1,184 @@
++package com.andrerinas.openheadunit.main
++
++import android.annotation.SuppressLint
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.content.IntentFilter
++import android.net.ConnectivityManager
++import android.net.Network
++import android.net.NetworkCapabilities
++import android.net.NetworkRequest
++import android.net.wifi.WifiManager
++import android.os.Build
++import android.os.Handler
++import android.os.Looper
++import android.provider.Settings as SystemSettings
++import androidx.core.content.ContextCompat
++import com.andrerinas.openheadunit.utils.AppLog
++
++/**
++ * The WiFi facts behind the home's WiFi line, kept current while the home is on screen, and the
++ * one-off scan its tap asks for. [start] in onStart, [stop] in onStop; [onChanged] runs on the
++ * main thread.
++ */
++class HomeWifiStatus(context: Context, private val onChanged: () -> Unit) {
++
++    enum class ScanRequest { STARTED, REFUSED, WIFI_OFF }
++
++    private val context = context.applicationContext
++    private val handler = Handler(Looper.getMainLooper())
++    private val wifi = this.context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
++    private val cm = this.context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
++
++    private var callback: ConnectivityManager.NetworkCallback? = null
++    private var receiver: BroadcastReceiver? = null
++    private var scanning = false
++
++    /** A scan whose results never arrive must not leave "Scanning…" on the card. */
++    private val scanTimeout = Runnable {
++        if (scanning) {
++            scanning = false
++            onChanged()
++        }
++    }
++
++    private fun changed() = handler.post(onChanged)
++
++    fun start() {
++        if (receiver != null) return
++        val r = object : BroadcastReceiver() {
++            override fun onReceive(c: Context, intent: Intent) {
++                if (intent.action == WifiManager.SCAN_RESULTS_AVAILABLE_ACTION && scanning) {
++                    scanning = false
++                    handler.removeCallbacks(scanTimeout)
++                }
++                changed()
++            }
++        }
++        // EXPORTED, as for the service's system WiFi broadcasts: NOT_EXPORTED would not hear them.
++        ContextCompat.registerReceiver(
++            context, r,
++            IntentFilter().apply {
++                addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
++                addAction(WifiManager.RSSI_CHANGED_ACTION)
++                addAction(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
++                @Suppress("DEPRECATION")
++                addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
++            },
++            ContextCompat.RECEIVER_EXPORTED
++        )
++        receiver = r
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && cm != null) {
++            val cb = object : ConnectivityManager.NetworkCallback() {
++                override fun onAvailable(network: Network) { changed() }
++                override fun onLost(network: Network) { changed() }
++                // Signal strength changes arrive here too.
++                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { changed() }
++            }
++            try {
++                cm.registerNetworkCallback(
++                    NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), cb
++                )
++                callback = cb
++            } catch (e: Exception) {
++                AppLog.w("HomeWifiStatus: no network callback, broadcasts only: ${e.message}")
++            }
++        }
++    }
++
++    fun stop() {
++        receiver?.let { try { context.unregisterReceiver(it) } catch (_: Exception) {} }
++        receiver = null
++        callback?.let { try { cm?.unregisterNetworkCallback(it) } catch (_: Exception) {} }
++        callback = null
++        handler.removeCallbacks(scanTimeout)
++        scanning = false
++    }
++
++    @SuppressLint("MissingPermission")
++    fun facts(): HomeWifiStatusPolicy.Facts {
++        val enabled = try { wifi?.isWifiEnabled == true } catch (_: Exception) { false }
++        val connected = isWifiConnected()
++        @Suppress("DEPRECATION")
++        val info = if (connected) try { wifi?.connectionInfo } catch (_: Exception) { null } else null
++        return HomeWifiStatusPolicy.Facts(
++            wifiEnabled = enabled,
++            connected = connected,
++            rawSsid = info?.ssid,
++            frequencyMhz = info?.frequency?.takeIf { Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP },
++            rssiDbm = info?.rssi,
++            scanning = scanning,
++        )
++    }
++
++    @SuppressLint("MissingPermission")
++    private fun isWifiConnected(): Boolean {
++        val cm = cm ?: return false
++        return try {
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
++                cm.allNetworks.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
++            } else {
++                @Suppress("DEPRECATION")
++                cm.getNetworkInfo(ConnectivityManager.TYPE_WIFI)?.isConnected == true
++            }
++        } catch (e: Exception) {
++            false
++        }
++    }
++
++    /**
++     * One scan, for the tap on the WiFi line. Android picks and joins the network itself; this
++     * only gets it the results sooner. From Android 9 a foreground app gets four scans in two
++     * minutes, and the platform refuses the rest.
++     */
++    @SuppressLint("MissingPermission")
++    fun requestScan(): ScanRequest {
++        val w = wifi ?: return ScanRequest.REFUSED
++        if (!w.isWifiEnabled) return ScanRequest.WIFI_OFF
++        val accepted = try {
++            @Suppress("DEPRECATION")
++            w.startScan()
++        } catch (e: Exception) {
++            AppLog.w("HomeWifiStatus: scan refused: ${e.message}")
++            false
++        }
++        AppLog.i("HomeWifiStatus: WiFi scan ${if (accepted) "requested" else "refused (throttled)"} from the home")
++        if (accepted) {
++            scanning = true
++            handler.removeCallbacks(scanTimeout)
++            handler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
++            changed()
++        }
++        return if (accepted) ScanRequest.STARTED else ScanRequest.REFUSED
++    }
++
++    /** WiFi off: below Android 10 the app may switch it on; above it only the WiFi panel can ask. */
++    @SuppressLint("MissingPermission")
++    fun askToTurnWifiOn() {
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
++            @Suppress("DEPRECATION")
++            val on = try { wifi?.setWifiEnabled(true) == true } catch (_: Exception) { false }
++            if (on) return
++        }
++        openWifiScreen(panel = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
++    }
++
++    /** Android's WiFi settings, for the long press: pick a network or type its password. */
++    fun openWifiSettings() = openWifiScreen(panel = false)
++
++    private fun openWifiScreen(panel: Boolean) {
++        val action = if (panel && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) SystemSettings.Panel.ACTION_WIFI
++            else SystemSettings.ACTION_WIFI_SETTINGS
++        try {
++            context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
++        } catch (e: Exception) {
++            AppLog.w("HomeWifiStatus: cannot open the WiFi screen ($action): ${e.message}")
++            if (panel) openWifiScreen(panel = false)
++        }
++    }
++
++    companion object {
++        private const val SCAN_TIMEOUT_MS = 10_000L
++    }
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicy.kt
+new file mode 100644
+index 00000000..2c01b244
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicy.kt
+@@ -0,0 +1,68 @@
++package com.andrerinas.openheadunit.main
++
++/**
++ * What the WiFi line next to the main button's icon says: the network this unit is on, its band
++ * and signal, or why there is none. Only for Headunit Server, where this unit joins the phone's
++ * hotspot; Native and WiFi Direct bring their own network, so "not connected" would mislead there.
++ *
++ * Pure, so every case is a unit test rather than a head unit.
++ */
++object HomeWifiStatusPolicy {
++
++    /** What WifiManager and ConnectivityManager say, read by [HomeWifiStatus]. */
++    data class Facts(
++        val wifiEnabled: Boolean,
++        val connected: Boolean,
++        /** As WifiInfo gives it, quotes and `<unknown ssid>` included. */
++        val rawSsid: String? = null,
++        val frequencyMhz: Int? = null,
++        val rssiDbm: Int? = null,
++        val scanning: Boolean = false,
++    )
++
++    enum class Kind { HIDDEN, SCANNING, OFF, NOT_CONNECTED, CONNECTED }
++
++    data class Line(
++        val kind: Kind,
++        /** Null when Android withholds the name: it does without location access. */
++        val ssid: String? = null,
++        val band: Band? = null,
++        val signalPercent: Int? = null,
++    )
++
++    enum class Band { GHZ_2_4, GHZ_5, GHZ_6 }
++
++    /** Below this Android reports no signal at all (WifiInfo.INVALID_RSSI is -127). */
++    private const val RSSI_FLOOR = -100
++    private const val RSSI_FULL = -50
++
++    fun line(isHeadunitServer: Boolean, cardIsWifi: Boolean, facts: Facts): Line = when {
++        !isHeadunitServer || !cardIsWifi -> Line(Kind.HIDDEN)
++        facts.scanning -> Line(Kind.SCANNING)
++        !facts.wifiEnabled -> Line(Kind.OFF)
++        !facts.connected -> Line(Kind.NOT_CONNECTED)
++        else -> Line(Kind.CONNECTED, cleanSsid(facts.rawSsid), band(facts.frequencyMhz), signalPercent(facts.rssiDbm))
++    }
++
++    /** The name without its quotes, or null for Android's placeholder. */
++    fun cleanSsid(raw: String?): String? {
++        val s = raw?.trim()?.removeSurrounding("\"")?.trim() ?: return null
++        if (s.isEmpty() || s.equals("<unknown ssid>", ignoreCase = true) || s == "0x") return null
++        return s
++    }
++
++    fun band(frequencyMhz: Int?): Band? = when (frequencyMhz) {
++        null -> null
++        in 2400..2500 -> Band.GHZ_2_4
++        in 4900..5900 -> Band.GHZ_5
++        in 5925..7125 -> Band.GHZ_6
++        else -> null
++    }
++
++    /** -100 dBm and below is 0 %, -50 dBm and above is 100 %; null when there is no reading. */
++    fun signalPercent(rssiDbm: Int?): Int? {
++        if (rssiDbm == null || rssiDbm < -126 || rssiDbm >= 0) return null
++        val clamped = rssiDbm.coerceIn(RSSI_FLOOR, RSSI_FULL)
++        return (clamped - RSSI_FLOOR) * 100 / (RSSI_FULL - RSSI_FLOOR)
++    }
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/utils/HomeUiHelper.kt b/app/src/main/java/com/andrerinas/openheadunit/utils/HomeUiHelper.kt
+index 76bfc106..0795a5f7 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/utils/HomeUiHelper.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/utils/HomeUiHelper.kt
+@@ -571,6 +571,7 @@ object HomeUiHelper {
+             text = secondsLeft.toString()
+         }
+         val detail = rootView.findViewById<TextView>(R.id.home_primary_detail)
++        val wifiStatus = rootView.findViewById<TextView>(R.id.home_wifi_status)
+         detail?.text = networkLine
+         detail?.visibility = if (stage != null && !networkLine.isNullOrEmpty()) View.VISIBLE else View.GONE
+         val progress = rootView.findViewById<View>(R.id.home_primary_progress)
+@@ -597,7 +598,7 @@ object HomeUiHelper {
+             card.background = rounded(palette.fill(color), panelRadius)
+             iconTile?.background = rounded(palette.fill(shade), tileRadius)
+             icon?.clearColorFilter()
+-            listOf(kicker, title, subtitle, detail).forEach { it?.setTextColor(Color.WHITE) }
++            listOf(kicker, title, subtitle, detail, wifiStatus).forEach { it?.setTextColor(Color.WHITE) }
+             action?.apply {
+                 background = pressable(Color.WHITE, ctaRadius, palette)
+                 setTextColor(ColorUtils.darkenColor(color, 0.66f))
+@@ -619,6 +620,7 @@ object HomeUiHelper {
+         title?.setTextColor(palette.text)
+         subtitle?.setTextColor(palette.textMuted)
+         detail?.setTextColor(palette.textMuted)
++        wifiStatus?.setTextColor(palette.textMuted)
+         action?.apply {
+             if (palette.mode == Mode.EXTREME_DARK) {
+                 // An outline lights far fewer pixels than a filled button.
+diff --git a/app/src/main/res/layout/view_home_primary_card.xml b/app/src/main/res/layout/view_home_primary_card.xml
+index 79a55120..5642c122 100644
+--- a/app/src/main/res/layout/view_home_primary_card.xml
++++ b/app/src/main/res/layout/view_home_primary_card.xml
+@@ -47,6 +47,27 @@
+                     app:srcCompat="@drawable/ic_usb_white" />
+             </FrameLayout>
+ 
++            <!-- Headunit Server only: the WiFi network this unit is on, or why there is none. A tap
++                 asks Android for one WiFi scan, a long press opens the WiFi settings. -->
++            <TextView
++                android:id="@+id/home_wifi_status"
++                style="@style/HomeCardText"
++                android:layout_width="wrap_content"
++                android:layout_marginStart="12dp"
++                android:layout_marginLeft="12dp"
++                android:maxWidth="@dimen/home_wifi_status_max_width"
++                android:maxLines="1"
++                android:ellipsize="end"
++                android:minHeight="@dimen/home_card_icon_tile"
++                android:gravity="center_vertical"
++                android:paddingLeft="4dp"
++                android:paddingRight="4dp"
++                android:background="?attr/selectableItemBackground"
++                android:clickable="true"
++                android:focusable="true"
++                android:textSize="@dimen/home_card_subtitle"
++                android:visibility="gone" />
++
+             <View
+                 android:layout_width="0dp"
+                 android:layout_height="0dp"
+diff --git a/app/src/main/res/values-tr/strings.xml b/app/src/main/res/values-tr/strings.xml
+index 083ca374..6fb03b6e 100644
+--- a/app/src/main/res/values-tr/strings.xml
++++ b/app/src/main/res/values-tr/strings.xml
+@@ -1852,4 +1852,15 @@
+     <string name="usb_wireless_dongle_help">AAWireless veya Carlinkit gibi bir kablosuz USB adaptörü ile bağlanıyorsanız bunu açın. Open Headunit bir dongle’ı kablodan ayırt edemez, bu yüzden bu seçenek ana ekran etiketlerini kablodan kablosuza çevirir.</string>
+     <string name="home_subtitle_usb_dongle">Kablosuz</string>
+     <string name="home_action_connect_wireless_dongle">Kablosuz bağlan</string>
++    <string name="home_wifi_not_connected">WiFi bağlı değil</string>
++    <string name="home_wifi_off">WiFi kapalı</string>
++    <string name="home_wifi_connected_unnamed">WiFi bağlı</string>
++    <string name="home_wifi_scanning">Taranıyor…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%%%1$d</string>
++    <string name="home_wifi_scan_started">WiFi ağları taranıyor…</string>
++    <string name="home_wifi_scan_refused">Android şu an taramaya izin vermiyor. Biraz sonra tekrar deneyin.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s. Ağları taramak için dokunun, WiFi ayarları için uzun basın.</string>
+ </resources>
+diff --git a/app/src/main/res/values/dimens.xml b/app/src/main/res/values/dimens.xml
+index dd7b0ece..b5a6d190 100644
+--- a/app/src/main/res/values/dimens.xml
++++ b/app/src/main/res/values/dimens.xml
+@@ -23,6 +23,8 @@
+     <dimen name="home_card_padding_h">8dp</dimen>
+     <dimen name="home_card_padding_v">4dp</dimen>
+     <dimen name="home_card_icon_tile">32dp</dimen>
++    <!-- The WiFi line beside the main button's icon; long names end in an ellipsis. -->
++    <dimen name="home_wifi_status_max_width">320dp</dimen>
+     <dimen name="home_card_icon">18dp</dimen>
+     <dimen name="home_card_kicker">9sp</dimen>
+     <dimen name="home_card_title">16sp</dimen>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 4436acb2..ed35832e 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1933,4 +1933,15 @@
+     <string name="audio_matching_phase_gradient_hint">Slow playback</string>
+     <string name="audio_matching_option" translatable="false">%1$s\n(%2$s)</string>
+     <string name="audio_matching_description">OHU remains the default. WSOLA aligns overlapping waveforms; Phase Vocoder adjusts spectral phases. Short uses a shorter analysis window. Phase Gradient integrates phase gradients to reconstruct phases. These independent methods add processing latency; their names do not rank sound quality.\n\nNative methods: PCM music. Navigation, voice responses, system sounds and AAC use OHU.\nReconnect to apply. Removed engine preferences reset to OHU.</string>
++    <string name="home_wifi_not_connected">WiFi not connected</string>
++    <string name="home_wifi_off">WiFi is off</string>
++    <string name="home_wifi_connected_unnamed">WiFi connected</string>
++    <string name="home_wifi_scanning">Scanning…</string>
++    <string name="home_wifi_band_24">2.4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Scanning for WiFi networks…</string>
++    <string name="home_wifi_scan_refused">Android does not allow a scan right now. Try again in a little while.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s. Tap to scan for networks, long press for WiFi settings.</string>
+ </resources>
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicyTest.kt b/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicyTest.kt
+new file mode 100644
+index 00000000..d5d09143
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicyTest.kt
+@@ -0,0 +1,71 @@
++package com.andrerinas.openheadunit.main
++
++import com.andrerinas.openheadunit.main.HomeWifiStatusPolicy.Band
++import com.andrerinas.openheadunit.main.HomeWifiStatusPolicy.Facts
++import com.andrerinas.openheadunit.main.HomeWifiStatusPolicy.Kind
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Test
++
++class HomeWifiStatusPolicyTest {
++
++    private val onPhone = Facts(wifiEnabled = true, connected = true, rawSsid = "\"Galaxy S24\"", frequencyMhz = 5180, rssiDbm = -65)
++
++    private fun line(facts: Facts, headunitServer: Boolean = true, cardIsWifi: Boolean = true) =
++        HomeWifiStatusPolicy.line(headunitServer, cardIsWifi, facts)
++
++    @Test
++    fun `shown only for Headunit Server while the card is the WiFi one`() {
++        assertEquals(Kind.HIDDEN, line(onPhone, headunitServer = false).kind)
++        assertEquals(Kind.HIDDEN, line(onPhone, cardIsWifi = false).kind)
++        assertEquals(Kind.CONNECTED, line(onPhone).kind)
++    }
++
++    @Test
++    fun `a connected unit shows the network, its band and its signal`() {
++        val l = line(onPhone)
++        assertEquals("Galaxy S24", l.ssid)
++        assertEquals(Band.GHZ_5, l.band)
++        assertEquals(70, l.signalPercent)
++    }
++
++    @Test
++    fun `without location access the name is left out, not made up`() {
++        val l = line(onPhone.copy(rawSsid = "<unknown ssid>"))
++        assertEquals(Kind.CONNECTED, l.kind)
++        assertNull(l.ssid)
++    }
++
++    @Test
++    fun `off and not connected are told apart`() {
++        assertEquals(Kind.OFF, line(Facts(wifiEnabled = false, connected = false)).kind)
++        assertEquals(Kind.NOT_CONNECTED, line(Facts(wifiEnabled = true, connected = false)).kind)
++    }
++
++    @Test
++    fun `scanning wins over everything but the mode`() {
++        assertEquals(Kind.SCANNING, line(onPhone.copy(scanning = true)).kind)
++        assertEquals(Kind.SCANNING, line(Facts(wifiEnabled = true, connected = false, scanning = true)).kind)
++        assertEquals(Kind.HIDDEN, line(onPhone.copy(scanning = true), headunitServer = false).kind)
++    }
++
++    @Test
++    fun `bands by frequency`() {
++        assertEquals(Band.GHZ_2_4, HomeWifiStatusPolicy.band(2437))
++        assertEquals(Band.GHZ_5, HomeWifiStatusPolicy.band(5200))
++        assertEquals(Band.GHZ_6, HomeWifiStatusPolicy.band(5955))
++        assertNull(HomeWifiStatusPolicy.band(null))
++        assertNull(HomeWifiStatusPolicy.band(-1))
++    }
++
++    @Test
++    fun `signal runs from 0 at -100 dBm to 100 at -50 dBm`() {
++        assertEquals(0, HomeWifiStatusPolicy.signalPercent(-100))
++        assertEquals(0, HomeWifiStatusPolicy.signalPercent(-110))
++        assertEquals(50, HomeWifiStatusPolicy.signalPercent(-75))
++        assertEquals(100, HomeWifiStatusPolicy.signalPercent(-50))
++        assertEquals(100, HomeWifiStatusPolicy.signalPercent(-30))
++        assertNull("Android's no-reading value", HomeWifiStatusPolicy.signalPercent(-127))
++        assertNull(HomeWifiStatusPolicy.signalPercent(null))
++    }
++}
