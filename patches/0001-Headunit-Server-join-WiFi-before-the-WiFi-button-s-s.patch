@@ -1,6 +1,6 @@
-From c3c56efd6050e09d46bc319fe42e935a48918d32 Mon Sep 17 00:00:00 2001
+From a9395d348f41f0bbfcea2528172ed201fafd5d39 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Mon, 16 Nov 2026 23:39:23 +0000
+Date: Tue, 17 Nov 2026 16:10:47 +0000
 Subject: [PATCH] Headunit Server: join WiFi before the WiFi button's search
 
 The WiFi button's one-shot search probes this unit's own subnet. A unit
@@ -42,28 +42,31 @@ Automatic connection (Headunit Server, Auto; on by default):
   refusing gateway that is the known phone skips the subnet sweep;
 - the home screen's "last session" auto-connect no longer dials the
   phone's last address beside the search;
-- one "Timeline:" line per connection in the log.
+- one "Timeline:" line per connection in the log;
+- on units that only switch the screen off, a wake after a long sleep
+  is a new drive (countdown again, earlier "not now" cleared), and WiFi
+  scans pause while the screen is off.
 Both settings are carried in the settings backup.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
 ---
  .github/workflows/personal-signed-apk.yml     |  99 ++++
- CHANGELOG.md                                  |   2 +
+ CHANGELOG.md                                  |   3 +
  README.md                                     |   1 +
- .../andrerinas/openheadunit/aap/AapService.kt | 179 +++++++-
+ .../andrerinas/openheadunit/aap/AapService.kt | 205 +++++++-
  .../connection/ConnectionStage.kt             |   9 +
  .../connection/ConnectionStagePolicy.kt       |  19 +
  .../connection/ConnectionStageTracker.kt      |   9 +
  .../connection/wifi/NetworkDiscovery.kt       |  31 +-
  .../connection/wifi/WifiJoinWaitPolicy.kt     |  58 +++
- .../connection/wifi/WifiJoinWaiter.kt         | 193 ++++++++
+ .../connection/wifi/WifiJoinWaiter.kt         | 217 +++++++++
  .../wifi/WifiLauncherSharedServices.kt        |  18 +
- .../autoconnect/HeadunitServerAutoConnect.kt  | 421 ++++++++++++++++++
- .../HeadunitServerAutoConnectPolicy.kt        | 128 ++++++
+ .../autoconnect/HeadunitServerAutoConnect.kt  | 456 ++++++++++++++++++
+ .../HeadunitServerAutoConnectPolicy.kt        | 128 +++++
  .../openheadunit/main/HomeFragment.kt         |  56 ++-
  .../openheadunit/main/HomePrimaryPolicy.kt    |   5 +
- .../openheadunit/main/SettingsFragment.kt     | 105 +++++
+ .../openheadunit/main/SettingsFragment.kt     | 105 ++++
  .../openheadunit/main/SettingsPendingCopy.kt  |  12 +
  .../openheadunit/main/StatusPillPolicy.kt     |   4 +
  .../andrerinas/openheadunit/utils/Settings.kt |  41 ++
@@ -95,9 +98,9 @@ Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
  app/src/main/res/values-zh-rTW/strings.xml    |  13 +
  app/src/main/res/values/strings.xml           |  27 ++
  .../connection/wifi/WifiJoinWaitPolicyTest.kt |  62 +++
- .../HeadunitServerAutoConnectPolicyTest.kt    | 106 +++++
+ .../HeadunitServerAutoConnectPolicyTest.kt    | 106 ++++
  .../autoconnect/HeadunitServerStagesTest.kt   |  89 ++++
- 49 files changed, 2007 insertions(+), 10 deletions(-)
+ 49 files changed, 2093 insertions(+), 10 deletions(-)
  create mode 100644 .github/workflows/personal-signed-apk.yml
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaitPolicy.kt
  create mode 100644 app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
@@ -213,15 +216,16 @@ index 00000000..4813f20d
 +            --title "Personal build ${{ github.run_number }} (${GITHUB_REF_NAME})" \
 +            --notes "Signed with the personal key. Commit ${{ github.sha }}."
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 097aa07d..2d53c4e4 100644
+index 097aa07d..4b7fbca6 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -5,6 +5,8 @@
+@@ -5,6 +5,9 @@
  - Allow embedding the projection activity, thanks to @codepdbh
  - Feat: Send volume buttons to the phone, and add speed-dependent volume, thanks to @Megalodon-sharky
  - Feat(usb): add wireless dongle display option for home screen
 +- Headunit Server: while the unit is not on WiFi, scan for WiFi instead of searching, and search the moment it joins, at startup and from the WiFi button
 +- Headunit Server: automatic connection with a start delay (countdown on the home card, paused while settings are open), an immediate search after a join with retries every 5 s, "WiFi connected, connecting to the phone", a closed head unit server told apart from an absent phone, the phone's network learned, and one timeline line per connection in the log
++- Headunit Server: on units that only switch the screen off, a wake after a long sleep starts the countdown again as a new drive, and WiFi scans pause while the screen is off
  
  ### 4.0.0
  - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar
@@ -238,7 +242,7 @@ index 51a26590..b426b4d0 100644
  #### 4. Wireless Helper
  - Our companion app triggers the wireless connection automatically in the background.
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt b/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
-index 3af63e6c..98587414 100644
+index 3af63e6c..830c385a 100644
 --- a/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
 +++ b/app/src/main/java/com/andrerinas/openheadunit/aap/AapService.kt
 @@ -125,6 +125,9 @@ import com.andrerinas.openheadunit.connection.wifi.WifiLauncherManager
@@ -278,7 +282,25 @@ index 3af63e6c..98587414 100644
  
      /**
       * Counts this unit's own WiFi scans into the log. Nothing acts on it; it exists so a reporter's
-@@ -1302,7 +1325,8 @@ class AapService : Service() {
+@@ -789,6 +812,8 @@ class AapService : Service() {
+                 Intent.ACTION_SCREEN_OFF -> {
+                     screenOffTimestamp = SystemClock.elapsedRealtime()
+                     AppLog.i("WakeDetect: SCREEN_OFF")
++                    huAutoConnectIfBuilt?.onScreenOff()
++                    wifiJoinWaiterIfBuilt?.pauseScans()
+                     commManager.pauseForSleep()
+                     maybeInferredAccPowerLoss { goAsync() }
+                 }
+@@ -807,6 +832,8 @@ class AapService : Service() {
+                     }
+                     FloatingButtonManager.update(this@AapService)
+ 
++                    onWakeForHeadunitServer(offDuration)
++
+                     if (commManager.connectionState.value is CommManager.ConnectionState.TransportStarted) {
+                         AppLog.i("WakeDetect: Requesting video focus on wake to restore keyframe")
+                         commManager.retakeVideoFocusForKeyframe()
+@@ -1302,7 +1329,8 @@ class AapService : Service() {
  
          if (applyBootLoopGuard()) {
              AppLog.w("AapService: Wireless bring-up paused by the boot-loop guard. USB and the rest of the app are unaffected.")
@@ -288,7 +310,7 @@ index 3af63e6c..98587414 100644
              initWifiModeWithOptionalWait()
          }
          scheduleBootLoopStrikeClear()
-@@ -2811,6 +2835,121 @@ class AapService : Service() {
+@@ -2811,6 +2839,143 @@ class AapService : Service() {
          }
      }
  
@@ -326,6 +348,28 @@ index 3af63e6c..98587414 100644
 +        wifiJoinWaiter.start("background search", ::onWifiJoinedForSearch)
 +        huAutoConnect.onParkedForWifi()
 +        return true
++    }
++
++    /**
++     * The screen came back on. On units that only switch the display off with the ignition, a
++     * long sleep is the start of a drive: the driver's earlier "not now" (leaving Android Auto,
++     * the status pill's X) belonged to the last one, and Headunit Server's automatic connection
++     * begins again. Scans paused for the sleep resume either way.
++     */
++    private fun onWakeForHeadunitServer(offDuration: Long) {
++        val settings = App.provide(this).settings
++        val newDrive = offDuration > HIBERNATE_WAKE_THRESHOLD_MS
++        if (newDrive && settings.wifiConnectionMode == WifiLauncherMode.AUTO &&
++            settings.headunitServerAutoConnect && !commManager.isConnected) {
++            userExitedAA = false
++            userExitCooldownUntil = 0L
++            if (wifiLauncherManager.cancelledByUser) {
++                wifiLauncherManager.liftUserCancel("a new drive after ${offDuration / 1000}s asleep")
++            }
++        }
++        huAutoConnect.onWake(newDrive)
++        wifiJoinWaiterIfBuilt?.resumeScans()
++        if (discoveryParkedForWifi) huAutoConnect.onParkedForWifi()
 +    }
 +
 +    /**
@@ -410,7 +454,7 @@ index 3af63e6c..98587414 100644
      private fun cancelAllBtAutoDisconnects() {
          btAutoDisconnectJobs.values.forEach { it.cancel() }
          btAutoDisconnectJobs.clear()
-@@ -2977,6 +3116,11 @@ class AapService : Service() {
+@@ -2977,6 +3142,11 @@ class AapService : Service() {
  
      private fun initWifiModeWithOptionalWait() {
          if (deferWirelessForUsbHandoff()) return
@@ -422,7 +466,7 @@ index 3af63e6c..98587414 100644
  
          val settings = App.provide(this).settings
  
-@@ -3215,6 +3359,7 @@ class AapService : Service() {
+@@ -3215,6 +3385,7 @@ class AapService : Service() {
  
          if (pause) {
              wirelessPausedForSettings = true
@@ -430,7 +474,7 @@ index 3af63e6c..98587414 100644
              releaseParkedHct()
              // A recreate or a permission prompt can have scheduled one; it must not fire now.
              settingsRearmJob?.cancel()
-@@ -3229,6 +3374,9 @@ class AapService : Service() {
+@@ -3229,6 +3400,9 @@ class AapService : Service() {
          wirelessPausedForSettings = false
          val mode = App.provide(this).settings.wifiConnectionMode
          if (mode == WifiLauncherMode.MANUAL) return
@@ -440,7 +484,7 @@ index 3af63e6c..98587414 100644
  
          if (!SettingsScreenPausePolicy.rearmsOnRelease(settingsQrHold, wirelessRearmPendingForSettings)) {
              AppLog.i(
-@@ -3479,6 +3627,8 @@ class AapService : Service() {
+@@ -3479,6 +3653,8 @@ class AapService : Service() {
  
      @SuppressLint("WrongConstant")
      override fun onDestroy() {
@@ -449,7 +493,7 @@ index 3af63e6c..98587414 100644
          closeRetainedHct()
          AppLog.i("AapService destroying... (wakeLock held=${bootWakeLock?.isHeld == true})")
          FloatingButtonManager.removeOverlay(this)
-@@ -3813,6 +3963,15 @@ class AapService : Service() {
+@@ -3813,6 +3989,15 @@ class AapService : Service() {
  
                  AppLog.i("AapService: Force-starting WIFI-Scan from UI")
  
@@ -465,7 +509,7 @@ index 3af63e6c..98587414 100644
                  // [FIX] Reset exit flags on manual scan start
                  userExitedAA = false
                  userExitCooldownUntil = 0L
-@@ -3822,7 +3981,13 @@ class AapService : Service() {
+@@ -3822,7 +4007,13 @@ class AapService : Service() {
                  )
  
                  if (mode == WifiLauncherMode.AUTO)
@@ -480,7 +524,7 @@ index 3af63e6c..98587414 100644
              }
              ACTION_STOP_WIRELESS         -> {
                  stopWirelessForCommand(intent?.getBooleanExtra(EXTRA_SETTINGS_REARM, false) == true)
-@@ -4110,6 +4275,11 @@ class AapService : Service() {
+@@ -4110,6 +4301,11 @@ class AapService : Service() {
                      wirelessRearmPendingForSettings = true
                      AppLog.i("AapService: Bluetooth auto-start while the settings screen is open; " +
                          "re-arming when it closes.")
@@ -492,7 +536,7 @@ index 3af63e6c..98587414 100644
                  } else if (actions.forceRearmWireless) {
                      wifiLauncherManager.setActiveFromSettings(force = true)
                  } else if (networkComingUp == true) {
-@@ -4551,6 +4721,11 @@ class AapService : Service() {
+@@ -4551,6 +4747,11 @@ class AapService : Service() {
          const val ACTION_START_WIRELESS_SCAN       = "com.andrerinas.openheadunit.ACTION_START_WIRELESS_SCAN"
          const val ACTION_STOP_WIRELESS             = "com.andrerinas.openheadunit.ACTION_STOP_WIRELESS"
          const val ACTION_CANCEL_WIRELESS           = "com.andrerinas.openheadunit.ACTION_CANCEL_WIRELESS"
@@ -728,10 +772,10 @@ index 00000000..533cef61
 +}
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
 new file mode 100644
-index 00000000..69b15a57
+index 00000000..0cd8bc9b
 --- /dev/null
 +++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/WifiJoinWaiter.kt
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,217 @@
 +package com.andrerinas.openheadunit.connection.wifi
 +
 +import android.annotation.SuppressLint
@@ -774,12 +818,14 @@ index 00000000..69b15a57
 +    private var onJoined: (() -> Unit)? = null
 +    private var scanIndex = 0
 +    private var startedAtMs = 0L
++    /** The screen is off: the wait goes on (a join still completes it), the scans stop. */
++    private var scansPaused = false
 +
 +    val isWaiting: Boolean get() = onJoined != null
 +
 +    private val scanTick = object : Runnable {
 +        override fun run() {
-+            if (!isWaiting) return
++            if (!isWaiting || scansPaused) return
 +            requestScan()
 +            handler.postDelayed(this, WifiJoinWaitPolicy.delayAfterScanMs(scanIndex++))
 +        }
@@ -806,11 +852,33 @@ index 00000000..69b15a57
 +        handler.post(scanTick)
 +    }
 +
++    /**
++     * The screen went off. Many head units only switch the display off with the ignition and keep
++     * running, so scanning on would go on all night for a phone that has gone home.
++     */
++    fun pauseScans() {
++        if (!isWaiting || scansPaused) return
++        scansPaused = true
++        handler.removeCallbacks(scanTick)
++        AppLog.i("WifiJoinWaiter: screen off; WiFi scans paused")
++    }
++
++    /** The screen is back: scans start again from the opening burst. */
++    fun resumeScans() {
++        if (!scansPaused) return
++        scansPaused = false
++        if (!isWaiting) return
++        scanIndex = 0
++        AppLog.i("WifiJoinWaiter: screen on; WiFi scans resumed")
++        handler.post(scanTick)
++    }
++
 +    /** Ends the wait without calling anything back. Safe when nothing is waiting. */
 +    fun stop() {
 +        if (!isWaiting) return
 +        AppLog.i("WifiJoinWaiter: stopped after ${elapsedSec()}s")
 +        onJoined = null
++        scansPaused = false
 +        handler.removeCallbacks(scanTick)
 +        callback?.let { try { cm?.unregisterNetworkCallback(it) } catch (_: Exception) {} }
 +        callback = null
@@ -988,10 +1056,10 @@ index 8cae2f2f..57bfc15a 100644
  
 diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
 new file mode 100644
-index 00000000..5e5fce96
+index 00000000..ad9ee324
 --- /dev/null
 +++ b/app/src/main/java/com/andrerinas/openheadunit/connection/wifi/autoconnect/HeadunitServerAutoConnect.kt
-@@ -0,0 +1,421 @@
+@@ -0,0 +1,456 @@
 +package com.andrerinas.openheadunit.connection.wifi.autoconnect
 +
 +import android.annotation.SuppressLint
@@ -1056,6 +1124,8 @@ index 00000000..5e5fce96
 +    private var stateJob: Job? = null
 +    /** The card's Cancel during the countdown: nothing starts by itself until the WiFi button. */
 +    private var cancelledCountdown = false
++    /** The screen went off mid-countdown, so no search was started; the wake owes it one. */
++    private var countdownCutBySleep = false
 +    private var fastRescanIndex = -1
 +    private var serverClosedToldThisRun = false
 +    private var lastFoundIp: String? = null
@@ -1159,6 +1229,39 @@ index 00000000..5e5fce96
 +        countdownJob?.cancel()
 +        countdownJob = null
 +        _countdown.value = null
++    }
++
++    /**
++     * The screen went off. Head units that only switch the display off with the ignition keep
++     * this service running, so the wake, not the service start, is where a drive begins.
++     */
++    fun onScreenOff() {
++        if (countdownJob?.isActive == true) {
++            AppLog.i("HuAutoConnect: screen off during the countdown; it starts again on wake")
++            stopCountdown()
++            countdownCutBySleep = true
++        }
++        stopVisibilityChecks()
++    }
++
++    /**
++     * The screen came back. A long sleep is a new drive: the timeline starts over, and with
++     * automatic connection the countdown runs as it does at startup (or the search starts at once
++     * with no delay). A short one only owes the countdown it interrupted. Returns true when it
++     * started something.
++     */
++    fun onWake(newDrive: Boolean): Boolean {
++        val owed = countdownCutBySleep
++        countdownCutBySleep = false
++        if (!newDrive && !owed) return false
++        if (newDrive) {
++            resetTimeline()
++            cancelledCountdown = false
++        }
++        if (!isAuto || !settings.headunitServerAutoConnect || sessionLive) return false
++        val why = if (newDrive) "wake after sleep" else "wake, countdown interrupted"
++        if (!beginCountdownIfWanted(why)) startSearch(why)
++        return true
 +    }
 +
 +    /** The settings screen opened: the countdown waits for it to close. The stack itself stops in AapService. */
