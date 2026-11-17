@@ -39,7 +39,10 @@ Automatic connection (Headunit Server, Auto; on by default):
   refusing gateway that is the known phone skips the subnet sweep;
 - the home screen's "last session" auto-connect no longer dials the
   phone's last address beside the search;
-- one "Timeline:" line per connection in the log.
+- one "Timeline:" line per connection in the log;
+- on units that only switch the screen off, a wake after a long sleep
+  is a new drive (countdown again, earlier "not now" cleared), and WiFi
+  scans pause while the screen is off.
 Both settings are carried in the settings backup.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

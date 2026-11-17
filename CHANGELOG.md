@@ -7,6 +7,7 @@
 - Feat(usb): add wireless dongle display option for home screen
 - Headunit Server: while the unit is not on WiFi, scan for WiFi instead of searching, and search the moment it joins, at startup and from the WiFi button
 - Headunit Server: automatic connection with a start delay (countdown on the home card, paused while settings are open), an immediate search after a join with retries every 5 s, "WiFi connected, connecting to the phone", a closed head unit server told apart from an absent phone, the phone's network learned, and one timeline line per connection in the log
+- Headunit Server: on units that only switch the screen off, a wake after a long sleep starts the countdown again as a new drive, and WiFi scans pause while the screen is off
 
 ### 4.0.0
 - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar

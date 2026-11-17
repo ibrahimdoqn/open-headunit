@@ -62,6 +62,8 @@ class HeadunitServerAutoConnect(
     private var stateJob: Job? = null
     /** The card's Cancel during the countdown: nothing starts by itself until the WiFi button. */
     private var cancelledCountdown = false
+    /** The screen went off mid-countdown, so no search was started; the wake owes it one. */
+    private var countdownCutBySleep = false
     private var fastRescanIndex = -1
     private var serverClosedToldThisRun = false
     private var lastFoundIp: String? = null
@@ -165,6 +167,39 @@ class HeadunitServerAutoConnect(
         countdownJob?.cancel()
         countdownJob = null
         _countdown.value = null
+    }
+
+    /**
+     * The screen went off. Head units that only switch the display off with the ignition keep
+     * this service running, so the wake, not the service start, is where a drive begins.
+     */
+    fun onScreenOff() {
+        if (countdownJob?.isActive == true) {
+            AppLog.i("HuAutoConnect: screen off during the countdown; it starts again on wake")
+            stopCountdown()
+            countdownCutBySleep = true
+        }
+        stopVisibilityChecks()
+    }
+
+    /**
+     * The screen came back. A long sleep is a new drive: the timeline starts over, and with
+     * automatic connection the countdown runs as it does at startup (or the search starts at once
+     * with no delay). A short one only owes the countdown it interrupted. Returns true when it
+     * started something.
+     */
+    fun onWake(newDrive: Boolean): Boolean {
+        val owed = countdownCutBySleep
+        countdownCutBySleep = false
+        if (!newDrive && !owed) return false
+        if (newDrive) {
+            resetTimeline()
+            cancelledCountdown = false
+        }
+        if (!isAuto || !settings.headunitServerAutoConnect || sessionLive) return false
+        val why = if (newDrive) "wake after sleep" else "wake, countdown interrupted"
+        if (!beginCountdownIfWanted(why)) startSearch(why)
+        return true
     }
 
     /** The settings screen opened: the countdown waits for it to close. The stack itself stops in AapService. */

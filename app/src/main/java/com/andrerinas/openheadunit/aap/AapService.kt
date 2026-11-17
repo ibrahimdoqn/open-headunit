@@ -812,6 +812,8 @@ class AapService : Service() {
                 Intent.ACTION_SCREEN_OFF -> {
                     screenOffTimestamp = SystemClock.elapsedRealtime()
                     AppLog.i("WakeDetect: SCREEN_OFF")
+                    huAutoConnectIfBuilt?.onScreenOff()
+                    wifiJoinWaiterIfBuilt?.pauseScans()
                     commManager.pauseForSleep()
                     maybeInferredAccPowerLoss { goAsync() }
                 }
@@ -829,6 +831,8 @@ class AapService : Service() {
                         rearmNativeHotspotAfterWake("SCREEN_ON after ${offSec}s sleep")
                     }
                     FloatingButtonManager.update(this@AapService)
+
+                    onWakeForHeadunitServer(offDuration)
 
                     if (commManager.connectionState.value is CommManager.ConnectionState.TransportStarted) {
                         AppLog.i("WakeDetect: Requesting video focus on wake to restore keyframe")
@@ -2869,6 +2873,28 @@ class AapService : Service() {
         wifiJoinWaiter.start("background search", ::onWifiJoinedForSearch)
         huAutoConnect.onParkedForWifi()
         return true
+    }
+
+    /**
+     * The screen came back on. On units that only switch the display off with the ignition, a
+     * long sleep is the start of a drive: the driver's earlier "not now" (leaving Android Auto,
+     * the status pill's X) belonged to the last one, and Headunit Server's automatic connection
+     * begins again. Scans paused for the sleep resume either way.
+     */
+    private fun onWakeForHeadunitServer(offDuration: Long) {
+        val settings = App.provide(this).settings
+        val newDrive = offDuration > HIBERNATE_WAKE_THRESHOLD_MS
+        if (newDrive && settings.wifiConnectionMode == WifiLauncherMode.AUTO &&
+            settings.headunitServerAutoConnect && !commManager.isConnected) {
+            userExitedAA = false
+            userExitCooldownUntil = 0L
+            if (wifiLauncherManager.cancelledByUser) {
+                wifiLauncherManager.liftUserCancel("a new drive after ${offDuration / 1000}s asleep")
+            }
+        }
+        huAutoConnect.onWake(newDrive)
+        wifiJoinWaiterIfBuilt?.resumeScans()
+        if (discoveryParkedForWifi) huAutoConnect.onParkedForWifi()
     }
 
     /**

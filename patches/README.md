@@ -32,6 +32,12 @@ Kartta görünen adımlar:
 - **Telefonda Headunit Server kapalı**: telefon cevap veriyor ama 5277 reddediliyor; bir kez nasıl açılacağı da söylenir
 - **Bağlanıyor → Android Auto**
 
+Ünite yalnızca ekranı kapatıyorsa (uygulama arka planda açık kalıyorsa):
+
+- Ekran kapanınca geri sayım durur, WiFi taramaları ve "görünmüyor" kontrolü duraklar (gece boyunca tarama yok).
+- Ekran 60 sn'den uzun kapalı kaldıysa açılış **yeni sürüş** sayılır: geri sayım yeniden başlar, önceki "Android Auto'dan çıktım" / "İptal" kararları sıfırlanır.
+- Kısa kapanmada taramalar kaldığı yerden sürer; yarıda kalan geri sayım yeniden başlar.
+
 Ayrıca:
 
 - "Son oturuma bağlan" artık son telefon adresini aramayla aynı anda aramıyor (çift bağlantı telefonun sunucusunu kilitleyebiliyordu).

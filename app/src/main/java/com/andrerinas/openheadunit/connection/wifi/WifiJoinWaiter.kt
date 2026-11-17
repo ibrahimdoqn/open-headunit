@@ -40,12 +40,14 @@ class WifiJoinWaiter(context: Context) {
     private var onJoined: (() -> Unit)? = null
     private var scanIndex = 0
     private var startedAtMs = 0L
+    /** The screen is off: the wait goes on (a join still completes it), the scans stop. */
+    private var scansPaused = false
 
     val isWaiting: Boolean get() = onJoined != null
 
     private val scanTick = object : Runnable {
         override fun run() {
-            if (!isWaiting) return
+            if (!isWaiting || scansPaused) return
             requestScan()
             handler.postDelayed(this, WifiJoinWaitPolicy.delayAfterScanMs(scanIndex++))
         }
@@ -72,11 +74,33 @@ class WifiJoinWaiter(context: Context) {
         handler.post(scanTick)
     }
 
+    /**
+     * The screen went off. Many head units only switch the display off with the ignition and keep
+     * running, so scanning on would go on all night for a phone that has gone home.
+     */
+    fun pauseScans() {
+        if (!isWaiting || scansPaused) return
+        scansPaused = true
+        handler.removeCallbacks(scanTick)
+        AppLog.i("WifiJoinWaiter: screen off; WiFi scans paused")
+    }
+
+    /** The screen is back: scans start again from the opening burst. */
+    fun resumeScans() {
+        if (!scansPaused) return
+        scansPaused = false
+        if (!isWaiting) return
+        scanIndex = 0
+        AppLog.i("WifiJoinWaiter: screen on; WiFi scans resumed")
+        handler.post(scanTick)
+    }
+
     /** Ends the wait without calling anything back. Safe when nothing is waiting. */
     fun stop() {
         if (!isWaiting) return
         AppLog.i("WifiJoinWaiter: stopped after ${elapsedSec()}s")
         onJoined = null
+        scansPaused = false
         handler.removeCallbacks(scanTick)
         callback?.let { try { cm?.unregisterNetworkCallback(it) } catch (_: Exception) {} }
         callback = null
