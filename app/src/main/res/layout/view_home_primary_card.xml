@@ -48,14 +48,16 @@
             </FrameLayout>
 
             <!-- Headunit Server only: the WiFi network this unit is on, or why there is none. A tap
-                 asks Android for one WiFi scan, a long press opens the WiFi settings. -->
+                 asks Android for one WiFi scan, a long press opens the WiFi settings. It shares the
+                 row's free width with the spacer after it, so it never reaches the countdown or the
+                 date and time in the far corner; only a very long name ends in an ellipsis. -->
             <TextView
                 android:id="@+id/home_wifi_status"
                 style="@style/HomeCardText"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_marginStart="12dp"
                 android:layout_marginLeft="12dp"
-                android:maxWidth="@dimen/home_wifi_status_max_width"
                 android:maxLines="1"
                 android:ellipsize="end"
                 android:minHeight="@dimen/home_card_icon_tile"
