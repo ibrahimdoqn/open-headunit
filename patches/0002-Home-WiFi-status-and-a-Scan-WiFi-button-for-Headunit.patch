@@ -1,7 +1,7 @@
 From 212fd15e62aeba2fbfb3bf31a9cb93a055aa49fd Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Wed, 18 Nov 2026 10:49:13 +0000
-Subject: [PATCH 2/2] Home: WiFi status and a Scan WiFi button for Headunit
+Subject: [PATCH 2/3] Home: WiFi status and a Scan WiFi button for Headunit
  Server
 
 Headunit Server needs this unit on the phone's hotspot, and an Android 10
