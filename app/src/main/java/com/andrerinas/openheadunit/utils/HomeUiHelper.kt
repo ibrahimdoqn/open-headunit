@@ -40,6 +40,7 @@ import com.andrerinas.openheadunit.R
 import com.andrerinas.openheadunit.connection.ConnectionStage
 import com.andrerinas.openheadunit.main.BarFitPolicy
 import com.andrerinas.openheadunit.main.HomeColorPolicy
+import com.andrerinas.openheadunit.main.HomeWifiStatusPolicy
 import com.andrerinas.openheadunit.main.HomePrimaryPolicy.Connection
 import com.andrerinas.openheadunit.main.HomePrimaryPolicy.Decision
 import com.andrerinas.openheadunit.main.HomePrimaryPolicy.Status
@@ -650,6 +651,130 @@ object HomeUiHelper {
             setTextColor(palette.text)
         }
     }
+
+    /**
+     * Headunit Server's WiFi line beside the main button's icon, and the Scan WiFi button beside the
+     * main button. Runs after [applyPrimaryCard], whose icon it swaps for "WiFi off" while this unit
+     * is not on WiFi. A HIDDEN line hides both. Painted with the same helpers as Cancel, so the day,
+     * night and extreme dark palettes and a custom WiFi color carry over.
+     */
+    fun applyWifiStatus(
+        context: Context,
+        rootView: View,
+        settings: Settings,
+        decision: Decision,
+        palette: Palette,
+        line: HomeWifiStatusPolicy.Line,
+        scanning: Boolean,
+    ) {
+        val status = rootView.findViewById<View>(R.id.home_wifi_status) ?: return
+        val scan = rootView.findViewById<View>(R.id.home_wifi_scan)
+        val shown = line.kind != HomeWifiStatusPolicy.Kind.HIDDEN
+        status.visibility = if (shown) View.VISIBLE else View.GONE
+        scan?.visibility =
+            if (HomeWifiStatusPolicy.showsScanButton(line, HomeWifiStatusPolicy.cardIdle(decision.status))) View.VISIBLE
+            else View.GONE
+        if (!shown) return
+
+        val name = rootView.findViewById<TextView>(R.id.home_wifi_name)
+        val warning = rootView.findViewById<View>(R.id.home_wifi_warning)
+        val band = rootView.findViewById<TextView>(R.id.home_wifi_band)
+        val bars = rootView.findViewById<ImageView>(R.id.home_wifi_bars)
+        val meta = rootView.findViewById<TextView>(R.id.home_wifi_meta)
+        val icon = rootView.findViewById<ImageView>(R.id.home_primary_icon)
+        val connected = line.kind == HomeWifiStatusPolicy.Kind.CONNECTED
+
+        name?.text = when (line.kind) {
+            HomeWifiStatusPolicy.Kind.OFF -> context.getString(R.string.home_wifi_off)
+            HomeWifiStatusPolicy.Kind.NOT_CONNECTED -> context.getString(R.string.home_wifi_not_connected)
+            else -> line.ssid ?: context.getString(R.string.home_wifi_connected_unnamed)
+        }
+        warning?.visibility = if (line.needsAttention) View.VISIBLE else View.GONE
+        val bandText = when (line.band) {
+            HomeWifiStatusPolicy.Band.GHZ_2_4 -> context.getString(R.string.home_wifi_band_24)
+            HomeWifiStatusPolicy.Band.GHZ_5 -> context.getString(R.string.home_wifi_band_5)
+            HomeWifiStatusPolicy.Band.GHZ_6 -> context.getString(R.string.home_wifi_band_6)
+            null -> null
+        }
+        band?.text = bandText
+        band?.visibility = if (connected && bandText != null) View.VISIBLE else View.GONE
+        bars?.setImageResource(WIFI_BARS[line.bars])
+        bars?.visibility = if (connected && line.signalPercent != null) View.VISIBLE else View.GONE
+        meta?.text = when (line.kind) {
+            HomeWifiStatusPolicy.Kind.OFF -> context.getString(R.string.home_wifi_off_hint)
+            HomeWifiStatusPolicy.Kind.NOT_CONNECTED -> context.getString(R.string.home_wifi_hotspot_hint)
+            else -> line.signalPercent?.let { context.getString(R.string.home_wifi_signal, it) } ?: ""
+        }
+        if (!connected) icon?.setImageResource(R.drawable.ic_wifi_off_white)
+        status.contentDescription = context.getString(
+            R.string.home_wifi_status_description,
+            listOfNotNull(name?.text, bandText, meta?.text?.takeIf { it.isNotEmpty() }).joinToString(", ")
+        )
+
+        val scanIcon = rootView.findViewById<ImageView>(R.id.home_wifi_scan_icon)
+        val progress = rootView.findViewById<android.widget.ProgressBar>(R.id.home_wifi_scan_progress)
+        val label = rootView.findViewById<TextView>(R.id.home_wifi_scan_label)
+        scanIcon?.visibility = if (scanning) View.GONE else View.VISIBLE
+        progress?.visibility = if (scanning) View.VISIBLE else View.GONE
+        label?.apply {
+            val idle = context.getString(R.string.home_wifi_scan_button)
+            val busy = context.getString(R.string.home_wifi_scanning)
+            text = if (scanning) busy else idle
+            // Wide enough for either label, so the button does not jump while it scans.
+            minWidth = maxOf(paint.measureText(idle), paint.measureText(busy)).toInt() + 1
+        }
+        scan?.contentDescription = context.getString(R.string.home_wifi_scan_description)
+
+        val color = connectionColor(settings, decision.primary, palette)
+        val radius = context.resources.getDimension(R.dimen.home_secondary_cta_height) / 2f
+        val chipRadius = context.resources.getDimension(R.dimen.home_tile_radius)
+        val emphasisPx = dp(context, 2)
+        val textColor: Int
+        val mutedColor: Int
+        if (!palette.isDark) {
+            val shade = ColorUtils.darkenColor(color, 0.78f)
+            textColor = Color.WHITE
+            mutedColor = withAlpha(Color.WHITE, 0xCC)
+            band?.setTextColor(Color.WHITE)
+            band?.background = rounded(withAlpha(Color.WHITE, 0x33), chipRadius)
+            scan?.background = if (line.needsAttention) {
+                // Not on WiFi: the scan is the next thing to do, so it wears an outline.
+                pressable(
+                    RIPPLE_COLOR,
+                    { shape(palette.fill(shade), radius, Color.WHITE, emphasisPx) },
+                    { shape(palette.pressedFill(ColorUtils.darkenColor(shade, 0.85f)), radius, Color.WHITE, emphasisPx) }
+                )
+            } else {
+                pressable(shade, radius, palette)
+            }
+        } else {
+            val strokePx = dp(context, 1)
+            textColor = palette.text
+            mutedColor = palette.textMuted
+            band?.setTextColor(color)
+            band?.background = rounded(withAlpha(color, ACCENT_WASH_ALPHA), chipRadius)
+            val stroke = if (line.needsAttention) palette.fill(color) else palette.tileStroke
+            val strokeWidth = if (line.needsAttention) emphasisPx else strokePx
+            scan?.background = pressable(
+                palette.ripple,
+                { shape(palette.tile, radius, stroke, strokeWidth) },
+                { shape(palette.tilePressed, radius, stroke, strokeWidth) }
+            )
+        }
+        name?.setTextColor(textColor)
+        meta?.setTextColor(mutedColor)
+        bars?.setColorFilter(mutedColor, PorterDuff.Mode.SRC_IN)
+        scanIcon?.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        label?.setTextColor(textColor)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            progress?.indeterminateTintList = ColorStateList.valueOf(textColor)
+        }
+    }
+
+    private val WIFI_BARS = intArrayOf(
+        R.drawable.ic_wifi_bars_0, R.drawable.ic_wifi_bars_1, R.drawable.ic_wifi_bars_2,
+        R.drawable.ic_wifi_bars_3, R.drawable.ic_wifi_bars_4,
+    )
 
     /**
      * The apps row, and the area holding it and the widgets, exist only while Open Headunit is the

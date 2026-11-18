@@ -50,4 +50,13 @@
     <dimen name="home_widget_padding">6dp</dimen>
     <dimen name="home_widget_strip_min">64dp</dimen>
     <dimen name="home_widget_strip_max">180dp</dimen>
+    <!-- Headunit Server's WiFi line beside the main button's icon, and its Scan WiFi button. -->
+    <dimen name="home_wifi_status_gap">14dp</dimen>
+    <dimen name="home_wifi_dot">9dp</dimen>
+    <dimen name="home_wifi_meta_gap">8dp</dimen>
+    <dimen name="home_wifi_chip_padding_h">8dp</dimen>
+    <dimen name="home_wifi_bars_width">18dp</dimen>
+    <dimen name="home_wifi_bars_height">15dp</dimen>
+    <dimen name="home_wifi_scan_icon">26dp</dimen>
+    <dimen name="home_wifi_scan_padding_h">26dp</dimen>
 </resources>
