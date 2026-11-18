@@ -1,0 +1,2281 @@
+From 212fd15e62aeba2fbfb3bf31a9cb93a055aa49fd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 18 Nov 2026 10:49:13 +0000
+Subject: [PATCH 2/2] Home: WiFi status and a Scan WiFi button for Headunit
+ Server
+
+Headunit Server needs this unit on the phone's hotspot, and an Android 10
+unit can sit a minute with that hotspot in range: the platform backs its
+own reconnect scans off while nothing is connected. Once the unit joins,
+the discovery loop finds the phone by itself, so one scan asked for by
+hand is often all that is missing.
+
+Headunit Server only (Manual and Auto), while the card is the WiFi one:
+- beside the main button's icon, the network this unit is on, a band
+  chip (2.4 / 5 / 6 GHz) and four signal bars with the percentage; not
+  connected or off shows an amber dot, a "WiFi off" icon and a hint.
+  Information only: it reacts to nothing.
+- a Scan WiFi button beside the main button, the same size and pill
+  shape: see-through white on the day card, the tile color at night. A
+  tap asks Android for one scan (or opens the WiFi panel when WiFi is
+  off) and turns an open ring until the results arrive; a long press
+  opens the WiFi settings. It stands out while the unit is not on WiFi,
+  and hides during a bring-up, the reconnect countdown and a session.
+
+The main button, in every mode, becomes a pill led by an icon (a link
+to connect, the arrow back to a session, refresh to search again), in
+a medium weight, and on the day card a white with a breath of the
+connection's color.
+
+On a narrow card, one step per layout and held while the width holds:
+Scan WiFi drops its label, then steps aside if the main button's label
+would still be cut; the WiFi line takes the header spacer's share, its
+name steps down a size and may take two lines, and the line under it
+drops the bars before a hint takes two lines. HomeWifiStatusLayoutTest
+lays the real home out on 1920x720, 1280x480, 1024x600, 1280x480 hdpi,
+800x450, a portrait phone and a portrait tablet.
+
+No connection logic changes. The rules are HomeWifiStatusPolicy, with
+unit tests; strings in every locale.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ CHANGELOG.md                                  |   1 +
+ .../openheadunit/main/HomeFragment.kt         |  57 ++-
+ .../openheadunit/main/HomeWifiStatus.kt       | 186 +++++++++
+ .../openheadunit/main/HomeWifiStatusPolicy.kt | 108 ++++++
+ .../openheadunit/utils/HomeUiHelper.kt        | 357 +++++++++++++++++-
+ .../res/drawable/home_wifi_warning_dot.xml    |   5 +
+ app/src/main/res/drawable/ic_link_white.xml   |  11 +
+ app/src/main/res/drawable/ic_wifi_bars_0.xml  |  24 ++
+ app/src/main/res/drawable/ic_wifi_bars_1.xml  |  24 ++
+ app/src/main/res/drawable/ic_wifi_bars_2.xml  |  24 ++
+ app/src/main/res/drawable/ic_wifi_bars_3.xml  |  24 ++
+ app/src/main/res/drawable/ic_wifi_bars_4.xml  |  24 ++
+ .../main/res/drawable/ic_wifi_find_white.xml  |  21 ++
+ .../main/res/drawable/ic_wifi_off_white.xml   |  11 +
+ .../res/drawable/ic_wifi_scanning_white.xml   |  21 ++
+ .../res/layout/view_home_primary_card.xml     | 122 +++++-
+ app/src/main/res/values-ar/strings.xml        |  15 +
+ app/src/main/res/values-cs/strings.xml        |  15 +
+ app/src/main/res/values-de/strings.xml        |  15 +
+ app/src/main/res/values-es-rES/strings.xml    |  15 +
+ app/src/main/res/values-es/strings.xml        |  15 +
+ app/src/main/res/values-fr/strings.xml        |  15 +
+ app/src/main/res/values-h320dp/dimens.xml     |  11 +
+ app/src/main/res/values-h360dp/dimens.xml     |  11 +
+ app/src/main/res/values-hi/strings.xml        |  15 +
+ app/src/main/res/values-hu/strings.xml        |  15 +
+ app/src/main/res/values-in/strings.xml        |  15 +
+ app/src/main/res/values-it/strings.xml        |  15 +
+ app/src/main/res/values-ja/strings.xml        |  15 +
+ app/src/main/res/values-ka/strings.xml        |  15 +
+ app/src/main/res/values-ko/strings.xml        |  15 +
+ app/src/main/res/values-nl/strings.xml        |  15 +
+ app/src/main/res/values-pl/strings.xml        |  15 +
+ app/src/main/res/values-pt-rBR/strings.xml    |  15 +
+ app/src/main/res/values-pt-rPT/strings.xml    |  15 +
+ app/src/main/res/values-ro/strings.xml        |  15 +
+ app/src/main/res/values-ru/strings.xml        |  15 +
+ app/src/main/res/values-th/strings.xml        |  15 +
+ app/src/main/res/values-tr/strings.xml        |  15 +
+ app/src/main/res/values-uk/strings.xml        |  15 +
+ app/src/main/res/values-vi/strings.xml        |  15 +
+ .../main/res/values-w400dp-h520dp/dimens.xml  |  11 +
+ app/src/main/res/values-zh-rCN/strings.xml    |  15 +
+ app/src/main/res/values-zh-rTW/strings.xml    |  15 +
+ app/src/main/res/values/dimens.xml            |  11 +
+ app/src/main/res/values/ids.xml               |   3 +
+ app/src/main/res/values/strings.xml           |  15 +
+ .../main/HomeWifiStatusLayoutTest.kt          | 101 +++++
+ .../main/HomeWifiStatusPolicyTest.kt          | 111 ++++++
+ 49 files changed, 1662 insertions(+), 7 deletions(-)
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatus.kt
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicy.kt
+ create mode 100644 app/src/main/res/drawable/home_wifi_warning_dot.xml
+ create mode 100644 app/src/main/res/drawable/ic_link_white.xml
+ create mode 100644 app/src/main/res/drawable/ic_wifi_bars_0.xml
+ create mode 100644 app/src/main/res/drawable/ic_wifi_bars_1.xml
+ create mode 100644 app/src/main/res/drawable/ic_wifi_bars_2.xml
+ create mode 100644 app/src/main/res/drawable/ic_wifi_bars_3.xml
+ create mode 100644 app/src/main/res/drawable/ic_wifi_bars_4.xml
+ create mode 100644 app/src/main/res/drawable/ic_wifi_find_white.xml
+ create mode 100644 app/src/main/res/drawable/ic_wifi_off_white.xml
+ create mode 100644 app/src/main/res/drawable/ic_wifi_scanning_white.xml
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusLayoutTest.kt
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicyTest.kt
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index bad8dc53..55752d64 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,7 @@
+ - Add "Show over lock screen": map and directions while locked, no input to the phone, thanks to @DukeShank
+ - Feat(home): move All Apps button to sidebar in launcher mode
+ - Display: reconnect in the remembered shape, and redraw instead of stretching when the screen turns, thanks to @tamer1an
++- Feat(home): Headunit Server shows the WiFi network, band and signal on the main card, with a Scan WiFi button that gets a slow unit onto the phone's hotspot; the main button becomes a pill led by an icon
+ 
+ ### 4.0.0
+ - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
+index 5aa034b5..9157421c 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeFragment.kt
+@@ -134,6 +134,8 @@ class HomeFragment : Fragment() {
+     private var reconnectTarget: HomePrimaryPolicy.Connection? = null
+     private var reconnectSecondsLeft = 0
+     private var autoConnectCancelled = false
++    /** The WiFi line beside the main button's icon, Headunit Server only; live while started. */
++    private var homeWifiStatus: HomeWifiStatus? = null
+     private var hasAttemptedAutoConnect = false
+     private var hasAttemptedSingleUsbAutoConnect = false
+     private var activeDialog: androidx.appcompat.app.AlertDialog? = null
+@@ -251,6 +253,7 @@ class HomeFragment : Fragment() {
+         ).forEach { id ->
+             container.findViewById<View>(id)?.setOnLongClickListener { showPageMenu(widgetPage = null) }
+         }
++        setupWifiStatus(container)
+         setupListeners()
+     }
+ 
+@@ -443,6 +446,49 @@ class HomeFragment : Fragment() {
+         cancelAutoConnectCountdown()
+     }
+ 
++    /**
++     * Headunit Server's Scan WiFi button: a tap asks Android for one WiFi scan (or to turn WiFi
++     * on), a long press opens Android's WiFi settings. The WiFi line itself is information only.
++     */
++    private fun setupWifiStatus(container: View) {
++        homeWifiStatus = HomeWifiStatus(requireContext()) { renderWifiStatus() }
++        container.findViewById<View>(R.id.home_wifi_scan)?.apply {
++            setOnClickListener { onWifiScanClicked() }
++            setOnLongClickListener {
++                homeWifiStatus?.openWifiSettings()
++                true
++            }
++        }
++    }
++
++    private fun onWifiScanClicked() {
++        val status = homeWifiStatus ?: return
++        val ctx = context ?: return
++        when (status.requestScan()) {
++            HomeWifiStatus.ScanRequest.STARTED ->
++                ToastUtils.showToast(ctx, getString(R.string.home_wifi_scan_started), Toast.LENGTH_SHORT)
++            HomeWifiStatus.ScanRequest.REFUSED ->
++                ToastUtils.showToast(ctx, getString(R.string.home_wifi_scan_refused), Toast.LENGTH_LONG, force = true)
++            HomeWifiStatus.ScanRequest.WIFI_OFF -> status.askToTurnWifiOn()
++        }
++        renderWifiStatus()
++    }
++
++    private fun renderWifiStatus() {
++        val root = view ?: return
++        val status = homeWifiStatus ?: return
++        val ctx = context ?: return
++        val decision = decision ?: return
++        val appSettings = App.provide(ctx).settings
++        val mode = appSettings.wifiConnectionMode
++        val line = HomeWifiStatusPolicy.line(
++            isHeadunitServer = mode == WifiLauncherMode.AUTO || mode == WifiLauncherMode.MANUAL,
++            cardIsWifi = decision.primary == HomePrimaryPolicy.Connection.WIFI,
++            facts = status.facts(),
++        )
++        HomeUiHelper.applyWifiStatus(ctx, root, appSettings, decision, homePalette(ctx), line, status.isScanning)
++    }
++
+     private fun renderHome() {
+         val ctx = context ?: return
+         val root = view ?: return
+@@ -480,6 +526,7 @@ class HomeFragment : Fragment() {
+             networkLine = ConnectionStageTracker.network.value?.let { networkText(it) }
+         )
+         HomeUiHelper.fitDriverBar(root, appSettings.homeButtonScalePercent)
++        renderWifiStatus()
+         renderHomeInfo()
+         reportBringUpOwner()
+         // Cancel, the progress bar and the step come and go with the status, so the lines that fit
+@@ -739,6 +786,11 @@ class HomeFragment : Fragment() {
+         if (!isAdded || view !== root) return
+         val card = root.findViewById<View>(R.id.home_primary_card) ?: return
+         if (card.height <= 0) return
++        // Width first: a narrower Scan WiFi or network name changes the layout the height fit reads.
++        if (HomeUiHelper.fitWifiStatus(requireContext(), root)) {
++            scheduleCardFit(root)
++            return
++        }
+         val pushBefore = root.findViewById<View>(R.id.home_primary_header)?.paddingTop ?: 0
+         setNoticePush(root, statusNoticesPush(root))
+         val stepShown = decision?.stage != null
+@@ -2161,7 +2213,7 @@ class HomeFragment : Fragment() {
+         val interior = HomePagesHintPolicy.Box(cardBox.left + padH, cardBox.top + padV, cardBox.right - padH, cardBox.bottom - padV)
+         val occupied = listOf(
+             R.id.home_primary_icon_tile, R.id.home_countdown, R.id.home_primary_progress,
+-            R.id.home_primary_actions, R.id.home_info,
++            R.id.home_primary_actions, R.id.home_info, R.id.home_wifi_status,
+         ).mapNotNull { id -> root.findViewById<View>(id)?.takeIf { it.isShown && it.width > 0 }?.let { boxIn(root, it) } } +
+             listOf(R.id.home_primary_kicker, R.id.home_primary_title, R.id.home_primary_subtitle, R.id.home_primary_detail)
+                 .mapNotNull { id -> root.findViewById<TextView>(id)?.takeIf { it.isShown && it.width > 0 }?.let { textBox(root, it) } }
+@@ -2371,6 +2423,8 @@ class HomeFragment : Fragment() {
+         // A host that is not listening holds an empty widget view, so this runs before the row is
+         // built in onResume.
+         HomeWidgets.startListening(requireContext())
++        homeWifiStatus?.start()
++        renderWifiStatus()
+         reportBringUpOwner(started = true)
+         activity?.window?.decorView?.viewTreeObserver?.addOnGlobalLayoutListener(issueBannerWatcher)
+     }
+@@ -2386,6 +2440,7 @@ class HomeFragment : Fragment() {
+     override fun onStop() {
+         super.onStop()
+         HomeWidgets.stopListening()
++        homeWifiStatus?.stop()
+         mainViewModel.homeShowsBringUp.value = false
+         // Started again by the next render, once the home is back on screen.
+         view?.let { HomeUiHelper.stopShines(it) }
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatus.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatus.kt
+new file mode 100644
+index 00000000..00a9b8aa
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatus.kt
+@@ -0,0 +1,186 @@
++package com.andrerinas.openheadunit.main
++
++import android.annotation.SuppressLint
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.content.IntentFilter
++import android.net.ConnectivityManager
++import android.net.Network
++import android.net.NetworkCapabilities
++import android.net.NetworkRequest
++import android.net.wifi.WifiManager
++import android.os.Build
++import android.os.Handler
++import android.os.Looper
++import android.provider.Settings as SystemSettings
++import androidx.core.content.ContextCompat
++import com.andrerinas.openheadunit.utils.AppLog
++
++/**
++ * The WiFi facts behind the home's WiFi line, kept current while the home is on screen, and the
++ * one-off scan the Scan WiFi button asks for. [start] in onStart, [stop] in onStop; [onChanged] runs on the
++ * main thread.
++ */
++class HomeWifiStatus(context: Context, private val onChanged: () -> Unit) {
++
++    enum class ScanRequest { STARTED, REFUSED, WIFI_OFF }
++
++    private val context = context.applicationContext
++    private val handler = Handler(Looper.getMainLooper())
++    private val wifi = this.context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
++    private val cm = this.context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
++
++    private var callback: ConnectivityManager.NetworkCallback? = null
++    private var receiver: BroadcastReceiver? = null
++    private var scanning = false
++
++    /** A scan from the button is out and its results have not come back (at most 10 s). */
++    val isScanning: Boolean get() = scanning
++
++    /** A scan whose results never arrive must not leave "Scanning…" on the card. */
++    private val scanTimeout = Runnable {
++        if (scanning) {
++            scanning = false
++            onChanged()
++        }
++    }
++
++    private fun changed() = handler.post(onChanged)
++
++    fun start() {
++        if (receiver != null) return
++        val r = object : BroadcastReceiver() {
++            override fun onReceive(c: Context, intent: Intent) {
++                if (intent.action == WifiManager.SCAN_RESULTS_AVAILABLE_ACTION && scanning) {
++                    scanning = false
++                    handler.removeCallbacks(scanTimeout)
++                }
++                changed()
++            }
++        }
++        // EXPORTED, as for the service's system WiFi broadcasts: NOT_EXPORTED would not hear them.
++        ContextCompat.registerReceiver(
++            context, r,
++            IntentFilter().apply {
++                addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
++                addAction(WifiManager.RSSI_CHANGED_ACTION)
++                addAction(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
++                @Suppress("DEPRECATION")
++                addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
++            },
++            ContextCompat.RECEIVER_EXPORTED
++        )
++        receiver = r
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && cm != null) {
++            val cb = object : ConnectivityManager.NetworkCallback() {
++                override fun onAvailable(network: Network) { changed() }
++                override fun onLost(network: Network) { changed() }
++                // Signal strength changes arrive here too.
++                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { changed() }
++            }
++            try {
++                cm.registerNetworkCallback(
++                    NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), cb
++                )
++                callback = cb
++            } catch (e: Exception) {
++                AppLog.w("HomeWifiStatus: no network callback, broadcasts only: ${e.message}")
++            }
++        }
++    }
++
++    fun stop() {
++        receiver?.let { try { context.unregisterReceiver(it) } catch (_: Exception) {} }
++        receiver = null
++        callback?.let { try { cm?.unregisterNetworkCallback(it) } catch (_: Exception) {} }
++        callback = null
++        handler.removeCallbacks(scanTimeout)
++        scanning = false
++    }
++
++    @SuppressLint("MissingPermission")
++    fun facts(): HomeWifiStatusPolicy.Facts {
++        val enabled = try { wifi?.isWifiEnabled == true } catch (_: Exception) { false }
++        val connected = isWifiConnected()
++        @Suppress("DEPRECATION")
++        val info = if (connected) try { wifi?.connectionInfo } catch (_: Exception) { null } else null
++        return HomeWifiStatusPolicy.Facts(
++            wifiEnabled = enabled,
++            connected = connected,
++            rawSsid = info?.ssid,
++            frequencyMhz = info?.frequency?.takeIf { Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP },
++            rssiDbm = info?.rssi,
++        )
++    }
++
++    @SuppressLint("MissingPermission")
++    private fun isWifiConnected(): Boolean {
++        val cm = cm ?: return false
++        return try {
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
++                cm.allNetworks.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
++            } else {
++                @Suppress("DEPRECATION")
++                cm.getNetworkInfo(ConnectivityManager.TYPE_WIFI)?.isConnected == true
++            }
++        } catch (e: Exception) {
++            false
++        }
++    }
++
++    /**
++     * One scan, for the Scan WiFi button. Android picks and joins the network itself; this
++     * only gets it the results sooner. From Android 9 a foreground app gets four scans in two
++     * minutes, and the platform refuses the rest.
++     */
++    @SuppressLint("MissingPermission")
++    fun requestScan(): ScanRequest {
++        val w = wifi ?: return ScanRequest.REFUSED
++        if (!w.isWifiEnabled) return ScanRequest.WIFI_OFF
++        val accepted = try {
++            @Suppress("DEPRECATION")
++            w.startScan()
++        } catch (e: Exception) {
++            AppLog.w("HomeWifiStatus: scan refused: ${e.message}")
++            false
++        }
++        AppLog.i("HomeWifiStatus: WiFi scan ${if (accepted) "requested" else "refused (throttled)"} from the home")
++        if (accepted) {
++            scanning = true
++            handler.removeCallbacks(scanTimeout)
++            handler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
++            changed()
++        }
++        return if (accepted) ScanRequest.STARTED else ScanRequest.REFUSED
++    }
++
++    /** WiFi off: below Android 10 the app may switch it on; above it only the WiFi panel can ask. */
++    @SuppressLint("MissingPermission")
++    fun askToTurnWifiOn() {
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
++            @Suppress("DEPRECATION")
++            val on = try { wifi?.setWifiEnabled(true) == true } catch (_: Exception) { false }
++            if (on) return
++        }
++        openWifiScreen(panel = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
++    }
++
++    /** Android's WiFi settings, for the long press: pick a network or type its password. */
++    fun openWifiSettings() = openWifiScreen(panel = false)
++
++    private fun openWifiScreen(panel: Boolean) {
++        val action = if (panel && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) SystemSettings.Panel.ACTION_WIFI
++            else SystemSettings.ACTION_WIFI_SETTINGS
++        try {
++            context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
++        } catch (e: Exception) {
++            AppLog.w("HomeWifiStatus: cannot open the WiFi screen ($action): ${e.message}")
++            if (panel) openWifiScreen(panel = false)
++        }
++    }
++
++    companion object {
++        private const val SCAN_TIMEOUT_MS = 10_000L
++    }
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicy.kt
+new file mode 100644
+index 00000000..e1c23881
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicy.kt
+@@ -0,0 +1,108 @@
++package com.andrerinas.openheadunit.main
++
++/**
++ * What the WiFi line next to the main button's icon says, and when the Scan WiFi button beside the
++ * main button shows. Only for Headunit Server, where this unit joins the phone's hotspot; Native
++ * and WiFi Direct bring their own network, so "not connected" would mislead there.
++ *
++ * Android 10 units can sit a minute with a saved hotspot in range, because the platform's own
++ * reconnect scans back off while nothing is connected. One scan asked for by hand ends that wait,
++ * and once the unit joins, the Headunit Server search finds the phone by itself.
++ *
++ * Pure, so every case is a unit test rather than a head unit.
++ */
++object HomeWifiStatusPolicy {
++
++    /** What WifiManager and ConnectivityManager say, read by [HomeWifiStatus]. */
++    data class Facts(
++        val wifiEnabled: Boolean,
++        val connected: Boolean,
++        /** As WifiInfo gives it, quotes and `<unknown ssid>` included. */
++        val rawSsid: String? = null,
++        val frequencyMhz: Int? = null,
++        val rssiDbm: Int? = null,
++    )
++
++    enum class Kind { HIDDEN, OFF, NOT_CONNECTED, CONNECTED }
++
++    enum class Band { GHZ_2_4, GHZ_5, GHZ_6 }
++
++    data class Line(
++        val kind: Kind,
++        /** Null when Android withholds the name: it does without location access. */
++        val ssid: String? = null,
++        val band: Band? = null,
++        val signalPercent: Int? = null,
++    ) {
++        /** Lit bars out of four; zero without a reading. */
++        val bars: Int get() = barsFor(signalPercent)
++
++        /** Not on WiFi: the scan is the next thing to do, so its button stands out. */
++        val needsAttention: Boolean get() = kind == Kind.OFF || kind == Kind.NOT_CONNECTED
++    }
++
++    /** Below this Android reports no signal at all (WifiInfo.INVALID_RSSI is -127). */
++    private const val RSSI_FLOOR = -100
++    private const val RSSI_FULL = -50
++
++    fun line(isHeadunitServer: Boolean, cardIsWifi: Boolean, facts: Facts): Line = when {
++        !isHeadunitServer || !cardIsWifi -> Line(Kind.HIDDEN)
++        !facts.wifiEnabled -> Line(Kind.OFF)
++        !facts.connected -> Line(Kind.NOT_CONNECTED)
++        else -> Line(Kind.CONNECTED, cleanSsid(facts.rawSsid), band(facts.frequencyMhz), signalPercent(facts.rssiDbm))
++    }
++
++    /**
++     * Whether the Scan WiFi button shows. Not while a connection is on its way, during the
++     * reconnect countdown, or over a session: the main button and Cancel are what matter then.
++     * While the stack only listens for the phone it does show: that is when a scan helps most.
++     */
++    fun showsScanButton(line: Line, cardIdle: Boolean): Boolean = line.kind != Kind.HIDDEN && cardIdle
++
++    /** Whether the card is idle enough for the Scan WiFi button; see [showsScanButton]. */
++    fun cardIdle(status: HomePrimaryPolicy.Status): Boolean = when (status) {
++        HomePrimaryPolicy.Status.CONNECTING,
++        HomePrimaryPolicy.Status.RECONNECTING,
++        HomePrimaryPolicy.Status.ACTIVE_SESSION -> false
++        else -> true
++    }
++
++    /**
++     * Whether Scan WiFi drops its label for its icon alone: when the actions row cannot hold the
++     * main button's one-line label, the gap, Scan WiFi in full and whatever else is in the row
++     * (Cancel while the stack listens). Otherwise the main button, which gives up width first, is
++     * squeezed to nothing on a portrait phone.
++     */
++    fun scanCompact(availablePx: Int, actionNeededPx: Int, gapPx: Int, scanFullPx: Int, othersPx: Int): Boolean =
++        availablePx > 0 && actionNeededPx + gapPx + scanFullPx + othersPx > availablePx
++
++    /** The name without its quotes, or null for Android's placeholder. */
++    fun cleanSsid(raw: String?): String? {
++        val s = raw?.trim()?.removeSurrounding("\"")?.trim() ?: return null
++        if (s.isEmpty() || s.equals("<unknown ssid>", ignoreCase = true) || s == "0x") return null
++        return s
++    }
++
++    fun band(frequencyMhz: Int?): Band? = when (frequencyMhz) {
++        null -> null
++        in 2400..2500 -> Band.GHZ_2_4
++        in 4900..5900 -> Band.GHZ_5
++        in 5925..7125 -> Band.GHZ_6
++        else -> null
++    }
++
++    /** -100 dBm and below is 0 %, -50 dBm and above is 100 %; null when there is no reading. */
++    fun signalPercent(rssiDbm: Int?): Int? {
++        if (rssiDbm == null || rssiDbm < -126 || rssiDbm >= 0) return null
++        val clamped = rssiDbm.coerceIn(RSSI_FLOOR, RSSI_FULL)
++        return (clamped - RSSI_FLOOR) * 100 / (RSSI_FULL - RSSI_FLOOR)
++    }
++
++    fun barsFor(signalPercent: Int?): Int = when {
++        signalPercent == null || signalPercent <= 0 -> 0
++        signalPercent >= 75 -> 4
++        signalPercent >= 50 -> 3
++        signalPercent >= 25 -> 2
++        else -> 1
++    }
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/utils/HomeUiHelper.kt b/app/src/main/java/com/andrerinas/openheadunit/utils/HomeUiHelper.kt
+index 8831c695..db7c6a1a 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/utils/HomeUiHelper.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/utils/HomeUiHelper.kt
+@@ -40,6 +40,7 @@ import com.andrerinas.openheadunit.R
+ import com.andrerinas.openheadunit.connection.ConnectionStage
+ import com.andrerinas.openheadunit.main.BarFitPolicy
+ import com.andrerinas.openheadunit.main.HomeColorPolicy
++import com.andrerinas.openheadunit.main.HomeWifiStatusPolicy
+ import com.andrerinas.openheadunit.main.HomePrimaryPolicy.Connection
+ import com.andrerinas.openheadunit.main.HomePrimaryPolicy.Decision
+ import com.andrerinas.openheadunit.main.HomePrimaryPolicy.Status
+@@ -565,7 +566,8 @@ object HomeUiHelper {
+         kicker?.text = context.getString(kickerRes(decision, usbAsWireless))
+         title?.text = title(context, decision, phoneName, usbAsWireless)
+         subtitle?.text = stage?.let { context.getString(it.label) } ?: context.getString(subtitleRes(decision, usbAsWireless))
+-        action?.text = context.getString(actionRes(decision, usbAsWireless))
++        val actionLabel = context.getString(actionRes(decision, usbAsWireless))
++        action?.contentDescription = actionLabel
+         // Nothing to start while a connection is on its way; Cancel is the one thing left to do.
+         action?.visibility = if (connecting) View.GONE else View.VISIBLE
+         icon?.setImageResource(iconRes(decision.primary))
+@@ -593,7 +595,8 @@ object HomeUiHelper {
+         val resources = context.resources
+         val panelRadius = resources.getDimension(R.dimen.home_panel_radius)
+         val tileRadius = resources.getDimension(R.dimen.home_tile_radius)
+-        val ctaRadius = resources.getDimension(R.dimen.home_cta_height) / 3.5f
++        // A pill, like Scan WiFi beside it.
++        val ctaRadius = resources.getDimension(R.dimen.home_cta_height) / 2f
+         val cancelRadius = resources.getDimension(R.dimen.home_secondary_cta_height) / 2f
+         val iconTile = rootView.findViewById<View>(R.id.home_primary_icon_tile)
+ 
+@@ -605,8 +608,11 @@ object HomeUiHelper {
+             icon?.clearColorFilter()
+             listOf(kicker, title, subtitle, detail).forEach { it?.setTextColor(Color.WHITE) }
+             action?.apply {
+-                background = pressable(Color.WHITE, ctaRadius, palette)
+-                setTextColor(ColorUtils.darkenColor(color, 0.66f))
++                // White with a breath of the connection's color, so it belongs to the card.
++                background = pressable(blend(Color.WHITE, color, ACTION_TINT), ctaRadius, palette)
++                val labelColor = ColorUtils.darkenColor(color, 0.66f)
++                setTextColor(labelColor)
++                text = withLeadingIcon(context, actionIconRes(decision, usbAsWireless), actionLabel, labelColor)
+             }
+             cancel?.apply {
+                 background = pressable(shade, cancelRadius, palette)
+@@ -636,9 +642,11 @@ object HomeUiHelper {
+                     mask = { rounded(Color.WHITE, ctaRadius) }
+                 )
+                 setTextColor(color)
++                text = withLeadingIcon(context, actionIconRes(decision, usbAsWireless), actionLabel, color)
+             } else {
+                 background = pressable(color, ctaRadius, palette)
+                 setTextColor(readableOn(color))
++                text = withLeadingIcon(context, actionIconRes(decision, usbAsWireless), actionLabel, readableOn(color))
+             }
+         }
+         cancel?.apply {
+@@ -651,6 +659,347 @@ object HomeUiHelper {
+         }
+     }
+ 
++    /**
++     * Headunit Server's WiFi line beside the main button's icon, and the Scan WiFi button beside the
++     * main button. Runs after [applyPrimaryCard], whose icon it swaps for "WiFi off" while this unit
++     * is not on WiFi. A HIDDEN line hides both. Painted with the same helpers as Cancel, so the day,
++     * night and extreme dark palettes and a custom WiFi color carry over.
++     */
++    fun applyWifiStatus(
++        context: Context,
++        rootView: View,
++        settings: Settings,
++        decision: Decision,
++        palette: Palette,
++        line: HomeWifiStatusPolicy.Line,
++        scanning: Boolean,
++    ) {
++        val status = rootView.findViewById<View>(R.id.home_wifi_status) ?: return
++        val scan = rootView.findViewById<View>(R.id.home_wifi_scan)
++        val shown = line.kind != HomeWifiStatusPolicy.Kind.HIDDEN
++        val contentWidth = contentWidthOf(rootView)
++        // fitWifiStatus() may have taken Scan WiFi off a card too narrow for it; that holds for
++        // as long as the card keeps the width it was taken off at.
++        val fittedOff = scan?.getTag(R.id.home_wifi_scan_icon) == contentWidth
++        status.visibility = if (shown) View.VISIBLE else View.GONE
++        scan?.visibility =
++            if (!fittedOff && HomeWifiStatusPolicy.showsScanButton(line, HomeWifiStatusPolicy.cardIdle(decision.status))) View.VISIBLE
++            else View.GONE
++        if (!shown) return
++
++        val name = rootView.findViewById<TextView>(R.id.home_wifi_name)
++        val warning = rootView.findViewById<View>(R.id.home_wifi_warning)
++        val band = rootView.findViewById<TextView>(R.id.home_wifi_band)
++        val bars = rootView.findViewById<ImageView>(R.id.home_wifi_bars)
++        val meta = rootView.findViewById<TextView>(R.id.home_wifi_meta)
++        val icon = rootView.findViewById<ImageView>(R.id.home_primary_icon)
++        val connected = line.kind == HomeWifiStatusPolicy.Kind.CONNECTED
++
++        name?.text = when (line.kind) {
++            HomeWifiStatusPolicy.Kind.OFF -> context.getString(R.string.home_wifi_off)
++            HomeWifiStatusPolicy.Kind.NOT_CONNECTED -> context.getString(R.string.home_wifi_not_connected)
++            else -> line.ssid ?: context.getString(R.string.home_wifi_connected_unnamed)
++        }
++        warning?.visibility = if (line.needsAttention) View.VISIBLE else View.GONE
++        val bandText = when (line.band) {
++            HomeWifiStatusPolicy.Band.GHZ_2_4 -> context.getString(R.string.home_wifi_band_24)
++            HomeWifiStatusPolicy.Band.GHZ_5 -> context.getString(R.string.home_wifi_band_5)
++            HomeWifiStatusPolicy.Band.GHZ_6 -> context.getString(R.string.home_wifi_band_6)
++            null -> null
++        }
++        band?.text = bandText
++        band?.visibility = if (connected && bandText != null) View.VISIBLE else View.GONE
++        bars?.setImageResource(WIFI_BARS[line.bars])
++        // fitWifiStatus() may have taken the bars off a narrow card; the percentage says the same.
++        val barsFittedOff = meta?.getTag(R.id.home_wifi_meta_fit) == contentWidth &&
++            bars?.getTag(R.id.home_wifi_meta_fit) == true
++        if (!barsFittedOff) bars?.setTag(R.id.home_wifi_meta_fit, null)
++        bars?.visibility = if (connected && line.signalPercent != null && !barsFittedOff) View.VISIBLE else View.GONE
++        meta?.text = when (line.kind) {
++            HomeWifiStatusPolicy.Kind.OFF -> context.getString(R.string.home_wifi_off_hint)
++            HomeWifiStatusPolicy.Kind.NOT_CONNECTED -> context.getString(R.string.home_wifi_hotspot_hint)
++            else -> line.signalPercent?.let { context.getString(R.string.home_wifi_signal, it) } ?: ""
++        }
++        if (!connected) icon?.setImageResource(R.drawable.ic_wifi_off_white)
++        status.contentDescription = context.getString(
++            R.string.home_wifi_status_description,
++            listOfNotNull(name?.text, bandText, meta?.text?.takeIf { it.isNotEmpty() }).joinToString(", ")
++        )
++
++        val scanIcon = rootView.findViewById<ImageView>(R.id.home_wifi_scan_icon)
++        val label = rootView.findViewById<TextView>(R.id.home_wifi_scan_label)
++        scanIcon?.let { spinScanIcon(context, it, scanning) }
++        // Full size again, unless fitWifiStatus() stepped down for the width the card still has:
++        // undoing that on every render would make a narrow card jump each time the home redraws.
++        val res = context.resources
++        rootView.findViewById<View>(R.id.home_primary_header_spacer)?.let { spacer ->
++            if (spacer.getTag(R.id.home_wifi_meta_fit) != contentWidth) {
++                spacer.setTag(R.id.home_wifi_meta_fit, null)
++                spacer.visibility = View.VISIBLE
++            }
++        }
++        if (name?.getTag(R.id.home_wifi_name) != contentWidth) {
++            name?.setTag(R.id.home_wifi_name, null)
++            name?.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.home_wifi_name_text))
++            name?.maxLines = 1
++        }
++        if (meta?.getTag(R.id.home_wifi_meta_fit) != contentWidth) {
++            meta?.setTag(R.id.home_wifi_meta_fit, null)
++            meta?.maxLines = 1
++        }
++        if (scan?.getTag(R.id.home_wifi_scan) != contentWidth) {
++            scan?.setTag(R.id.home_wifi_scan, null)
++            val scanPad = res.getDimensionPixelSize(R.dimen.home_wifi_scan_padding_h)
++            scan?.setPadding(scanPad, 0, scanPad, 0)
++            label?.visibility = View.VISIBLE
++        }
++        label?.apply {
++            val idle = context.getString(R.string.home_wifi_scan_button)
++            val busy = context.getString(R.string.home_wifi_scanning)
++            text = if (scanning) busy else idle
++            // Wide enough for either label, so the button does not jump while it scans.
++            minWidth = maxOf(paint.measureText(idle), paint.measureText(busy)).toInt() + 1
++        }
++        scan?.contentDescription = context.getString(R.string.home_wifi_scan_description)
++
++        val color = connectionColor(settings, decision.primary, palette)
++        val radius = context.resources.getDimension(R.dimen.home_cta_height) / 2f
++        val emphasisPx = dp(context, 2)
++        val textColor: Int
++        val mutedColor: Int
++        if (!palette.isDark) {
++            textColor = Color.WHITE
++            mutedColor = withAlpha(Color.WHITE, 0xCC)
++            band?.setTextColor(Color.WHITE)
++            band?.background = rounded(withAlpha(Color.WHITE, 0x24), radius)
++            // See-through white with a fine outline; not on WiFi, the scan is the next thing to
++            // do, so it gets a brighter fill and a firmer outline.
++            val fill = if (line.needsAttention) SCAN_FILL_ATTENTION else SCAN_FILL
++            val stroke = withAlpha(Color.WHITE, if (line.needsAttention) SCAN_STROKE_ATTENTION else SCAN_STROKE)
++            val strokeWidth = if (line.needsAttention) dp(context, 3) else emphasisPx
++            scan?.background = pressable(
++                RIPPLE_COLOR,
++                { shape(withAlpha(Color.WHITE, fill), radius, stroke, strokeWidth) },
++                { shape(withAlpha(Color.WHITE, fill + SCAN_FILL_PRESSED_STEP), radius, stroke, strokeWidth) },
++                mask = { rounded(Color.WHITE, radius) }
++            )
++        } else {
++            val strokePx = dp(context, 1)
++            textColor = palette.text
++            mutedColor = palette.textMuted
++            // The connection's color washes the chip; the label stays the readable text color.
++            band?.setTextColor(palette.text)
++            band?.background = rounded(withAlpha(color, BAND_WASH_ALPHA_DARK), radius)
++            val stroke = if (line.needsAttention) palette.fill(color) else palette.tileStroke
++            val strokeWidth = if (line.needsAttention) emphasisPx else strokePx
++            scan?.background = pressable(
++                palette.ripple,
++                { shape(palette.tile, radius, stroke, strokeWidth) },
++                { shape(palette.tilePressed, radius, stroke, strokeWidth) },
++                mask = { rounded(Color.WHITE, radius) }
++            )
++        }
++        name?.setTextColor(textColor)
++        meta?.setTextColor(mutedColor)
++        bars?.setColorFilter(mutedColor, PorterDuff.Mode.SRC_IN)
++        scanIcon?.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
++        label?.setTextColor(textColor)
++    }
++
++    /**
++     * While a scan is out the magnifier gives way to an open ring that turns, a turn every 0.9 s;
++     * with animations off it stands still. One animator per icon, kept on the view.
++     */
++    private fun spinScanIcon(context: Context, icon: ImageView, scanning: Boolean) {
++        val running = icon.getTag(R.id.home_wifi_scan_spin) as? ValueAnimator
++        if (!scanning) {
++            running?.cancel()
++            icon.setTag(R.id.home_wifi_scan_spin, null)
++            icon.rotation = 0f
++            icon.setImageResource(R.drawable.ic_wifi_find_white)
++            return
++        }
++        icon.setImageResource(R.drawable.ic_wifi_scanning_white)
++        if (running != null || !animationsEnabled(context)) return
++        val spin = ValueAnimator.ofFloat(0f, 360f).apply {
++            duration = SCAN_SPIN_MS
++            repeatCount = ValueAnimator.INFINITE
++            interpolator = android.view.animation.LinearInterpolator()
++            addUpdateListener { icon.rotation = it.animatedValue as Float }
++        }
++        icon.setTag(R.id.home_wifi_scan_spin, spin)
++        spin.start()
++    }
++
++    /**
++     * After layout, for a card narrower than the WiFi line and Scan WiFi were drawn for, one step
++     * per layout: Scan WiFi drops its label for its icon alone (see
++     * [HomeWifiStatusPolicy.scanCompact]), then steps off the card if even that cuts the main
++     * button's label; a WiFi line that does not fit first takes the header spacer's share, then
++     * its name steps down to the subtitle size and takes two lines, and the line under it drops
++     * the bars and (a hint, never a single word) takes two lines. Each holds while
++     * the card keeps its width. Returns whether anything changed, so the caller lays out again.
++     */
++    fun fitWifiStatus(context: Context, rootView: View): Boolean {
++        val res = context.resources
++        val scan = rootView.findViewById<View>(R.id.home_wifi_scan)
++        val label = rootView.findViewById<TextView>(R.id.home_wifi_scan_label)
++        val action = rootView.findViewById<TextView>(R.id.home_primary_action)
++        val row = rootView.findViewById<ViewGroup>(R.id.home_primary_actions)
++        val content = row?.parent as? View
++        val width = contentWidthOf(rootView)
++        if (scan?.visibility == View.VISIBLE && label?.visibility == View.VISIBLE && action != null &&
++            row != null && content != null && content.width > 0
++        ) {
++            val gap = res.getDimensionPixelSize(R.dimen.home_gap)
++            val text = action.text ?: ""
++            val actionNeeded = action.paddingLeft + action.paddingRight +
++                kotlin.math.ceil(android.text.Layout.getDesiredWidth(text, action.paint)).toInt()
++            var others = 0
++            for (i in 0 until row.childCount) {
++                val child = row.getChildAt(i)
++                if (child === action || child === scan || child.visibility != View.VISIBLE) continue
++                others += child.width + gap
++            }
++            val available = content.width - content.paddingLeft - content.paddingRight
++            if (HomeWifiStatusPolicy.scanCompact(available, actionNeeded, gap, scan.width, others)) {
++                label.visibility = View.GONE
++                val icon = res.getDimensionPixelSize(R.dimen.home_cta_icon)
++                val side = ((res.getDimensionPixelSize(R.dimen.home_cta_height) - icon) / 2).coerceAtLeast(0)
++                scan.setPadding(side, 0, side, 0)
++                scan.setTag(R.id.home_wifi_scan, width)
++                // One step per layout: the next one has to be judged on the layout this one makes.
++                return true
++            }
++        }
++        // Its icon alone still squeezes the main button's label into an ellipsis (a portrait phone):
++        // the main button matters more, and the WiFi line above still tells the state.
++        if (scan?.visibility == View.VISIBLE && label?.visibility == View.GONE && action?.layout != null &&
++            (0 until action.layout.lineCount).any { action.layout.getEllipsisCount(it) > 0 }
++        ) {
++            scan.visibility = View.GONE
++            scan.setTag(R.id.home_wifi_scan_icon, width)
++            return true
++        }
++        val name = rootView.findViewById<TextView>(R.id.home_wifi_name)
++        val smaller = res.getDimension(R.dimen.home_card_subtitle)
++        val nameCut = name?.visibility == View.VISIBLE && name.layout != null &&
++            (0 until name.layout.lineCount).any { name.layout.getEllipsisCount(it) > 0 }
++        val meta = rootView.findViewById<TextView>(R.id.home_wifi_meta)
++        val bars = rootView.findViewById<View>(R.id.home_wifi_bars)
++        val metaCut = meta?.visibility == View.VISIBLE && meta.layout != null && meta.text.isNotEmpty() &&
++            (meta.width == 0 || (0 until meta.layout.lineCount).any { meta.layout.getEllipsisCount(it) > 0 })
++        // First the WiFi line takes the spacer's share of the header row (a portrait card).
++        val spacer = rootView.findViewById<View>(R.id.home_primary_header_spacer)
++        if ((nameCut || metaCut) && spacer?.visibility == View.VISIBLE) {
++            spacer.visibility = View.GONE
++            spacer.setTag(R.id.home_wifi_meta_fit, width)
++            return true
++        }
++        if (nameCut && name!!.textSize > smaller) {
++            name.setTextSize(TypedValue.COMPLEX_UNIT_PX, smaller)
++            name.setTag(R.id.home_wifi_name, width)
++            return true
++        }
++        if (nameCut && name!!.maxLines < 2) {
++            // Still too long at the smaller size (a portrait phone): two lines rather than a cut.
++            name.maxLines = 2
++            name.setTag(R.id.home_wifi_name, width)
++            return true
++        }
++        // The line under the name: the bars go first, since the percentage beside them says the
++        // same; then a hint may take two lines. A single word (the percentage) is never broken.
++        if (metaCut && bars?.visibility == View.VISIBLE) {
++            bars.visibility = View.GONE
++            bars.setTag(R.id.home_wifi_meta_fit, true)
++            meta!!.setTag(R.id.home_wifi_meta_fit, width)
++            return true
++        }
++        if (metaCut && meta!!.maxLines < 2 && meta.text.trim().contains(' ')) {
++            meta.maxLines = 2
++            meta.setTag(R.id.home_wifi_meta_fit, width)
++            return true
++        }
++        return false
++    }
++
++    private fun contentWidthOf(rootView: View): Int =
++        (rootView.findViewById<View>(R.id.home_primary_actions)?.parent as? View)?.width ?: 0
++
++    private const val SCAN_SPIN_MS = 900L
++    private const val ACTION_TINT = 0.07f
++    private const val BAND_WASH_ALPHA_DARK = 0x59
++    private const val SCAN_FILL = 0x24
++    private const val SCAN_FILL_ATTENTION = 0x3D
++    private const val SCAN_FILL_PRESSED_STEP = 0x18
++    private const val SCAN_STROKE = 0x47
++    private const val SCAN_STROKE_ATTENTION = 0xBF
++
++    /** What the main button leads with: the link for a connect, the arrow back to a session. */
++    internal fun actionIconRes(decision: Decision, usbAsWireless: Boolean = false): Int = when (decision.status) {
++        Status.ACTIVE_SESSION -> R.drawable.ic_launch_white
++        Status.SEARCHING -> R.drawable.ic_refresh_white
++        Status.RECONNECTING -> R.drawable.ic_link_white
++        else -> when (decision.primary) {
++            Connection.USB -> if (usbAsWireless) R.drawable.ic_link_white else R.drawable.ic_usb_white
++            Connection.WIFI -> R.drawable.ic_link_white
++            Connection.SELF -> R.drawable.ic_launch_white
++        }
++    }
++
++    /**
++     * [label] led by the icon [iconRes] in [color], the size of the main button's icon dimen. In
++     * the text rather than a compound drawable, so the pair stays centered together and still
++     * breaks onto two lines on a narrow phone.
++     */
++    private fun withLeadingIcon(context: Context, iconRes: Int, label: String, @ColorInt color: Int): CharSequence {
++        val icon = androidx.appcompat.content.res.AppCompatResources.getDrawable(context, iconRes)?.mutate()
++            ?: return label
++        val size = context.resources.getDimensionPixelSize(R.dimen.home_cta_icon)
++        icon.setBounds(0, 0, size, size)
++        androidx.core.graphics.drawable.DrawableCompat.setTint(icon, color)
++        val gap = context.resources.getDimensionPixelSize(R.dimen.home_wifi_meta_gap)
++        return android.text.SpannableStringBuilder("\uFFFC").apply {
++            setSpan(LeadingIconSpan(icon, gap), 0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
++            append(label)
++        }
++    }
++
++    /** Draws [icon] centered on the text's line, followed by [gap]. */
++    private class LeadingIconSpan(private val icon: Drawable, private val gap: Int) : android.text.style.ReplacementSpan() {
++        override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
++            fm?.let { paint.getFontMetricsInt(it) }
++            return icon.bounds.width() + gap
++        }
++
++        override fun draw(
++            canvas: Canvas, text: CharSequence?, start: Int, end: Int,
++            x: Float, top: Int, y: Int, bottom: Int, paint: Paint
++        ) {
++            val fm = paint.fontMetricsInt
++            val centerY = y + (fm.ascent + fm.descent) / 2f
++            canvas.save()
++            canvas.translate(x, centerY - icon.bounds.height() / 2f)
++            icon.draw(canvas)
++            canvas.restore()
++        }
++    }
++
++    /** [from] moved [amount] (0..1) of the way to [to], channel by channel. */
++    private fun blend(@ColorInt from: Int, @ColorInt to: Int, amount: Float): Int {
++        fun ch(shift: Int): Int {
++            val a = (from shr shift) and 0xFF
++            val b = (to shr shift) and 0xFF
++            return (a + (b - a) * amount).toInt().coerceIn(0, 255)
++        }
++        return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
++    }
++
++    private val WIFI_BARS = intArrayOf(
++        R.drawable.ic_wifi_bars_0, R.drawable.ic_wifi_bars_1, R.drawable.ic_wifi_bars_2,
++        R.drawable.ic_wifi_bars_3, R.drawable.ic_wifi_bars_4,
++    )
++
+     /**
+      * The apps row, and the area holding it and the widgets, exist only while Open Headunit is the
+      * launcher, and the row takes the height the main
+diff --git a/app/src/main/res/drawable/home_wifi_warning_dot.xml b/app/src/main/res/drawable/home_wifi_warning_dot.xml
+new file mode 100644
+index 00000000..ef2f4dbf
+--- /dev/null
++++ b/app/src/main/res/drawable/home_wifi_warning_dot.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Before "WiFi not connected" on the home's WiFi line: a small amber dot. -->
++<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
++    <solid android:color="#FFB547" />
++</shape>
+diff --git a/app/src/main/res/drawable/ic_link_white.xml b/app/src/main/res/drawable/ic_link_white.xml
+new file mode 100644
+index 00000000..1a4fdeba
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_link_white.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Leads the main button's "Connect" labels. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="#FFFFFF"
++        android:pathData="M17,7h-4v2h4c1.65,0 3,1.35 3,3s-1.35,3 -3,3h-4v2h4c2.76,0 5,-2.24 5,-5s-2.24,-5 -5,-5zM11,15L7,15c-1.65,0 -3,-1.35 -3,-3s1.35,-3 3,-3h4L11,7L7,7c-2.76,0 -5,2.24 -5,5s2.24,5 5,5h4v-2zM8,11h8v2L8,13z" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_wifi_bars_0.xml b/app/src/main/res/drawable/ic_wifi_bars_0.xml
+new file mode 100644
+index 00000000..300eb260
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_wifi_bars_0.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- WiFi signal, 0 of 4 bars lit: the home's WiFi line (Headunit Server). -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="19dp"
++    android:height="16dp"
++    android:viewportWidth="19"
++    android:viewportHeight="16">
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M1.8,13h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v1.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-1.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M6.8,9.5h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v4.9a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-4.9a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M11.8,6h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v8.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-8.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M16.8,2h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v12.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-12.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_wifi_bars_1.xml b/app/src/main/res/drawable/ic_wifi_bars_1.xml
+new file mode 100644
+index 00000000..2b3936c8
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_wifi_bars_1.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- WiFi signal, 1 of 4 bars lit: the home's WiFi line (Headunit Server). -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="19dp"
++    android:height="16dp"
++    android:viewportWidth="19"
++    android:viewportHeight="16">
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M1.8,13h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v1.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-1.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M6.8,9.5h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v4.9a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-4.9a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M11.8,6h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v8.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-8.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M16.8,2h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v12.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-12.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_wifi_bars_2.xml b/app/src/main/res/drawable/ic_wifi_bars_2.xml
+new file mode 100644
+index 00000000..c77ec191
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_wifi_bars_2.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- WiFi signal, 2 of 4 bars lit: the home's WiFi line (Headunit Server). -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="19dp"
++    android:height="16dp"
++    android:viewportWidth="19"
++    android:viewportHeight="16">
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M1.8,13h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v1.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-1.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M6.8,9.5h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v4.9a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-4.9a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M11.8,6h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v8.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-8.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M16.8,2h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v12.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-12.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_wifi_bars_3.xml b/app/src/main/res/drawable/ic_wifi_bars_3.xml
+new file mode 100644
+index 00000000..9aaa0164
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_wifi_bars_3.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- WiFi signal, 3 of 4 bars lit: the home's WiFi line (Headunit Server). -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="19dp"
++    android:height="16dp"
++    android:viewportWidth="19"
++    android:viewportHeight="16">
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M1.8,13h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v1.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-1.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M6.8,9.5h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v4.9a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-4.9a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M11.8,6h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v8.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-8.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="0.35"
++        android:pathData="M16.8,2h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v12.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-12.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_wifi_bars_4.xml b/app/src/main/res/drawable/ic_wifi_bars_4.xml
+new file mode 100644
+index 00000000..abcd0a6a
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_wifi_bars_4.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- WiFi signal, 4 of 4 bars lit: the home's WiFi line (Headunit Server). -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="19dp"
++    android:height="16dp"
++    android:viewportWidth="19"
++    android:viewportHeight="16">
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M1.8,13h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v1.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-1.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M6.8,9.5h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v4.9a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-4.9a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M11.8,6h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v8.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-8.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:fillAlpha="1"
++        android:pathData="M16.8,2h0.3999999999999999a0.8,0.8 0,0 1,0.8 0.8v12.4a0.8,0.8 0,0 1,-0.8 0.8h-0.3999999999999999a0.8,0.8 0,0 1,-0.8 -0.8v-12.4a0.8,0.8 0,0 1,0.8 -0.8z" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_wifi_find_white.xml b/app/src/main/res/drawable/ic_wifi_find_white.xml
+new file mode 100644
+index 00000000..a5c668cc
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_wifi_find_white.xml
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- WiFi with a magnifier: the home's "Scan WiFi" button. Outlined, to sit with the light icons. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:pathData="M2.3,9.1a13.8,13.8 0,0 1,19.4 0M5.6,12.5a9.2,9.2 0,0 1,8.9 -2.5M8.9,15.9a4.6,4.6 0,0 1,3.4 -1.4"
++        android:strokeColor="#FFFFFF"
++        android:strokeWidth="2"
++        android:strokeLineCap="round"
++        android:fillColor="#00000000" />
++    <path
++        android:pathData="M17.2,16.4m-3.3,0a3.3,3.3 0,1 1,6.6 0a3.3,3.3 0,1 1,-6.6 0M19.6,18.8L22,21.2"
++        android:strokeColor="#FFFFFF"
++        android:strokeWidth="2"
++        android:strokeLineCap="round"
++        android:strokeLineJoin="round"
++        android:fillColor="#00000000" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_wifi_off_white.xml b/app/src/main/res/drawable/ic_wifi_off_white.xml
+new file mode 100644
+index 00000000..ed361ecc
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_wifi_off_white.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- The main button's icon while this unit is not on WiFi (Headunit Server). -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="#FFFFFF"
++        android:pathData="M22.99,9C19.15,5.16 13.8,3.76 8.84,4.78l2.52,2.52c3.47,-0.17 6.99,1.05 9.63,3.7l2,-2zM18.99,13c-1.29,-1.29 -2.84,-2.13 -4.49,-2.56l3.53,3.53 0.96,-0.97zM2,3.05L5.07,6.1C3.6,6.82 2.22,7.78 1,9l1.99,2c1.24,-1.24 2.67,-2.16 4.2,-2.77l2.24,2.24C7.81,10.89 6.27,11.73 5,13v0.01L6.99,15c1.36,-1.36 3.14,-2.04 4.92,-2.06L18.98,20l1.27,-1.26L3.29,1.79 2,3.05zM9,17l3,3 3,-3c-1.65,-1.66 -4.34,-1.66 -6,0z" />
++</vector>
+diff --git a/app/src/main/res/drawable/ic_wifi_scanning_white.xml b/app/src/main/res/drawable/ic_wifi_scanning_white.xml
+new file mode 100644
+index 00000000..dea52082
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_wifi_scanning_white.xml
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Scan WiFi while a scan is out: an open ring with rounded ends that the button turns. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:pathData="M12,3.5a8.5,8.5 0,1 1,-8.03 5.7"
++        android:strokeColor="#FFFFFF"
++        android:strokeWidth="2.6"
++        android:strokeLineCap="round"
++        android:fillColor="#00000000" />
++    <path
++        android:pathData="M12,3.5a8.5,8.5 0,0 0,-6.2 2.7"
++        android:strokeColor="#FFFFFF"
++        android:strokeAlpha="0.35"
++        android:strokeWidth="2.6"
++        android:strokeLineCap="round"
++        android:fillColor="#00000000" />
++</vector>
+diff --git a/app/src/main/res/layout/view_home_primary_card.xml b/app/src/main/res/layout/view_home_primary_card.xml
+index 79a55120..b1b54587 100644
+--- a/app/src/main/res/layout/view_home_primary_card.xml
++++ b/app/src/main/res/layout/view_home_primary_card.xml
+@@ -47,7 +47,89 @@
+                     app:srcCompat="@drawable/ic_usb_white" />
+             </FrameLayout>
+ 
++            <!-- Headunit Server only: the WiFi network this unit is on, its band and signal, or why
++                 there is none. Information only: the Scan WiFi button below acts on it. It takes
++                 three quarters of the row's free width and the spacer after it the rest, so it never
++                 reaches the countdown or the date and time in the far corner. A name too long for
++                 it steps down a size, then ends in an ellipsis. -->
++            <LinearLayout
++                android:id="@+id/home_wifi_status"
++                android:layout_width="0dp"
++                android:layout_height="wrap_content"
++                android:layout_weight="3"
++                android:layout_marginStart="@dimen/home_wifi_status_gap"
++                android:layout_marginLeft="@dimen/home_wifi_status_gap"
++                android:orientation="vertical"
++                android:visibility="gone">
++
++                <LinearLayout
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:orientation="horizontal"
++                    android:gravity="center_vertical">
++
++                    <ImageView
++                        android:id="@+id/home_wifi_warning"
++                        android:layout_width="@dimen/home_wifi_dot"
++                        android:layout_height="@dimen/home_wifi_dot"
++                        android:layout_marginEnd="@dimen/home_wifi_meta_gap"
++                        android:layout_marginRight="@dimen/home_wifi_meta_gap"
++                        android:importantForAccessibility="no"
++                        android:src="@drawable/home_wifi_warning_dot"
++                        android:visibility="gone" />
++
++                    <TextView
++                        android:id="@+id/home_wifi_name"
++                        style="@style/HomeCardText"
++                        android:fontFamily="sans-serif-medium"
++                        android:maxLines="1"
++                        android:ellipsize="end"
++                        android:textSize="@dimen/home_wifi_name_text" />
++                </LinearLayout>
++
++                <LinearLayout
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:layout_marginTop="2dp"
++                    android:orientation="horizontal"
++                    android:gravity="center_vertical">
++
++                    <TextView
++                        android:id="@+id/home_wifi_band"
++                        style="@style/HomeCardText"
++                        android:layout_marginEnd="@dimen/home_wifi_meta_gap"
++                        android:layout_marginRight="@dimen/home_wifi_meta_gap"
++                        android:paddingLeft="@dimen/home_wifi_chip_padding_h"
++                        android:paddingRight="@dimen/home_wifi_chip_padding_h"
++                        android:paddingTop="1dp"
++                        android:paddingBottom="1dp"
++                        android:fontFamily="sans-serif-medium"
++                        android:maxLines="1"
++                        android:textSize="@dimen/home_card_kicker"
++                        android:visibility="gone" />
++
++                    <ImageView
++                        android:id="@+id/home_wifi_bars"
++                        android:layout_width="@dimen/home_wifi_bars_width"
++                        android:layout_height="@dimen/home_wifi_bars_height"
++                        android:layout_marginEnd="@dimen/home_wifi_meta_gap"
++                        android:layout_marginRight="@dimen/home_wifi_meta_gap"
++                        android:importantForAccessibility="no"
++                        android:visibility="gone"
++                        app:srcCompat="@drawable/ic_wifi_bars_0" />
++
++                    <TextView
++                        android:id="@+id/home_wifi_meta"
++                        style="@style/HomeCardText"
++                        android:maxLines="1"
++                        android:ellipsize="end"
++                        android:textSize="@dimen/home_card_subtitle" />
++                </LinearLayout>
++            </LinearLayout>
++
++            <!-- Gives way to the WiFi line on a card too narrow for both (HomeUiHelper.fitWifiStatus). -->
+             <View
++                android:id="@+id/home_primary_header_spacer"
+                 android:layout_width="0dp"
+                 android:layout_height="0dp"
+                 android:layout_weight="1" />
+@@ -166,8 +248,44 @@
+                 android:ellipsize="end"
+                 android:clickable="true"
+                 android:focusable="true"
+-                android:textSize="@dimen/home_cta_text"
+-                android:textStyle="bold" />
++                android:fontFamily="sans-serif-medium"
++                android:textSize="@dimen/home_cta_text" />
++
++            <!-- Headunit Server only, while nothing is on its way: asks Android for one WiFi scan,
++                 which is what gets a slow unit onto the phone's hotspot. A long press opens the
++                 WiFi settings. The main button's size and shape, see-through; it sits before Cancel
++                 while the stack only listens. -->
++            <LinearLayout
++                android:id="@+id/home_wifi_scan"
++                android:layout_width="wrap_content"
++                android:layout_height="@dimen/home_cta_height"
++                android:layout_gravity="center_vertical"
++                android:paddingLeft="@dimen/home_wifi_scan_padding_h"
++                android:paddingRight="@dimen/home_wifi_scan_padding_h"
++                android:orientation="horizontal"
++                android:gravity="center"
++                android:clickable="true"
++                android:focusable="true"
++                android:visibility="gone">
++
++                <ImageView
++                    android:id="@+id/home_wifi_scan_icon"
++                    android:layout_width="@dimen/home_cta_icon"
++                    android:layout_height="@dimen/home_cta_icon"
++                    android:importantForAccessibility="no"
++                    app:srcCompat="@drawable/ic_wifi_find_white" />
++
++
++                <TextView
++                    android:id="@+id/home_wifi_scan_label"
++                    style="@style/HomeCardText"
++                    android:layout_marginStart="@dimen/home_wifi_meta_gap"
++                    android:layout_marginLeft="@dimen/home_wifi_meta_gap"
++                    android:fontFamily="sans-serif-medium"
++                    android:maxLines="1"
++                    android:text="@string/home_wifi_scan_button"
++                    android:textSize="@dimen/home_cta_text" />
++            </LinearLayout>
+ 
+             <TextView
+                 android:id="@+id/home_primary_cancel"
+diff --git a/app/src/main/res/values-ar/strings.xml b/app/src/main/res/values-ar/strings.xml
+index dcb2e08b..4870d9ac 100644
+--- a/app/src/main/res/values-ar/strings.xml
++++ b/app/src/main/res/values-ar/strings.xml
+@@ -1878,4 +1878,19 @@
+     <string name="usb_wireless_dongle_help">فعّل هذا الخيار إذا كنت تتصل عبر محول USB لاسلكي مثل AAWireless أو Carlinkit. لا يستطيع Open Headunit التمييز بين الدونجل والكابل، لذا يغيّر هذا الخيار تسميات الشاشة الرئيسية من سلكي إلى لاسلكي.</string>
+     <string name="home_subtitle_usb_dongle">لاسلكياً</string>
+     <string name="home_action_connect_wireless_dongle">الاتصال لاسلكياً</string>
++    <string name="home_wifi_not_connected">شبكة WiFi غير متصلة</string>
++    <string name="home_wifi_off">WiFi مغلق</string>
++    <string name="home_wifi_connected_unnamed">WiFi متصل</string>
++    <string name="home_wifi_scanning">جارٍ البحث…</string>
++    <string name="home_wifi_band_24">2.4 غيغاهرتز</string>
++    <string name="home_wifi_band_5">5 غيغاهرتز</string>
++    <string name="home_wifi_band_6">6 غيغاهرتز</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">جارٍ البحث عن شبكات WiFi…</string>
++    <string name="home_wifi_scan_refused">لا يسمح Android بالبحث الآن. حاول مرة أخرى بعد قليل.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">البحث عن WiFi</string>
++    <string name="home_wifi_hotspot_hint">هل نقطة اتصال الهاتف مفعّلة؟</string>
++    <string name="home_wifi_off_hint">المس البحث عن WiFi لتشغيله</string>
++    <string name="home_wifi_scan_description">البحث عن شبكات WiFi. اضغط مطولًا لفتح إعدادات WiFi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-cs/strings.xml b/app/src/main/res/values-cs/strings.xml
+index 9e94e710..66426eda 100644
+--- a/app/src/main/res/values-cs/strings.xml
++++ b/app/src/main/res/values-cs/strings.xml
+@@ -1877,4 +1877,19 @@
+     <string name="usb_wireless_dongle_help">Zapněte, pokud se připojujete přes bezdrátový USB adaptér, například AAWireless nebo Carlinkit. Open Headunit nerozezná adaptér od kabelu, proto tato volba změní popisky na domovské obrazovce na bezdrátové.</string>
+     <string name="home_subtitle_usb_dongle">Bezdrátově</string>
+     <string name="home_action_connect_wireless_dongle">Připojit bezdrátově</string>
++    <string name="home_wifi_not_connected">Wi-Fi není připojeno</string>
++    <string name="home_wifi_off">Wi-Fi je vypnuté</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi připojeno</string>
++    <string name="home_wifi_scanning">Hledání…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d %%</string>
++    <string name="home_wifi_scan_started">Hledání sítí Wi-Fi…</string>
++    <string name="home_wifi_scan_refused">Android teď hledání nepovoluje. Zkuste to za chvíli znovu.</string>
++    <string name="home_wifi_status_description">Wi-Fi: %1$s</string>
++    <string name="home_wifi_scan_button">Hledat Wi-Fi</string>
++    <string name="home_wifi_hotspot_hint">Je hotspot telefonu zapnutý?</string>
++    <string name="home_wifi_off_hint">Klepnutím na Hledat Wi-Fi ho zapnete</string>
++    <string name="home_wifi_scan_description">Hledat sítě Wi-Fi. Podržením otevřete nastavení Wi-Fi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-de/strings.xml b/app/src/main/res/values-de/strings.xml
+index 2e1021e4..ee35bf2f 100644
+--- a/app/src/main/res/values-de/strings.xml
++++ b/app/src/main/res/values-de/strings.xml
+@@ -1880,4 +1880,19 @@
+     <string name="esp32_relay_end_aa_on_disconnect_summary">Sitzung beenden, wenn das Relay zweimal nicht antwortet</string>
+     <string name="esp32_relay_end_aa_on_disconnect_description">Dieses Gerät sendet alle 2 Sekunden eine Statusprüfung an das Relay. Bleiben zwei Prüfungen in Folge ohne Antwort, endet die Android-Auto-Sitzung.</string>
+     <string name="esp32_relay_phase_failed">Fehlgeschlagen: %1$s</string>
++    <string name="home_wifi_not_connected">WLAN nicht verbunden</string>
++    <string name="home_wifi_off">WLAN ist aus</string>
++    <string name="home_wifi_connected_unnamed">WLAN verbunden</string>
++    <string name="home_wifi_scanning">Suche läuft…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d %%</string>
++    <string name="home_wifi_scan_started">Suche nach WLAN-Netzen…</string>
++    <string name="home_wifi_scan_refused">Android erlaubt gerade keine Suche. Versuche es gleich noch einmal.</string>
++    <string name="home_wifi_status_description">WLAN: %1$s</string>
++    <string name="home_wifi_scan_button">WLAN suchen</string>
++    <string name="home_wifi_hotspot_hint">Ist der Hotspot des Handys an?</string>
++    <string name="home_wifi_off_hint">Zum Einschalten auf WLAN suchen tippen</string>
++    <string name="home_wifi_scan_description">Nach WLAN-Netzen suchen. Lange drücken für die WLAN-Einstellungen.</string>
+ </resources>
+diff --git a/app/src/main/res/values-es-rES/strings.xml b/app/src/main/res/values-es-rES/strings.xml
+index d984cb0a..bbea8a7f 100644
+--- a/app/src/main/res/values-es-rES/strings.xml
++++ b/app/src/main/res/values-es-rES/strings.xml
+@@ -1891,4 +1891,19 @@
+     <string name="usb_wireless_dongle_help">Actívalo si te conectas mediante un adaptador USB inalámbrico como AAWireless o Carlinkit. Open Headunit no puede distinguir un adaptador de un cable, por lo que esta opción cambia las etiquetas de la pantalla de inicio a inalámbrico.</string>
+     <string name="home_subtitle_usb_dongle">De forma inalámbrica</string>
+     <string name="home_action_connect_wireless_dongle">Conectar de forma inalámbrica</string>
++    <string name="home_wifi_not_connected">Wi-Fi no conectado</string>
++    <string name="home_wifi_off">El Wi-Fi está apagado</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi conectado</string>
++    <string name="home_wifi_scanning">Buscando…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d %%</string>
++    <string name="home_wifi_scan_started">Buscando redes Wi-Fi…</string>
++    <string name="home_wifi_scan_refused">Android no permite una búsqueda ahora. Vuelve a intentarlo en un momento.</string>
++    <string name="home_wifi_status_description">Wi-Fi: %1$s</string>
++    <string name="home_wifi_scan_button">Buscar Wi-Fi</string>
++    <string name="home_wifi_hotspot_hint">¿Está activa la zona Wi-Fi del teléfono?</string>
++    <string name="home_wifi_off_hint">Toca Buscar Wi-Fi para activarlo</string>
++    <string name="home_wifi_scan_description">Buscar redes Wi-Fi. Mantén pulsado para los ajustes de Wi-Fi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-es/strings.xml b/app/src/main/res/values-es/strings.xml
+index 917d21f1..2944ab9c 100644
+--- a/app/src/main/res/values-es/strings.xml
++++ b/app/src/main/res/values-es/strings.xml
+@@ -1884,4 +1884,19 @@
+     <string name="usb_wireless_dongle_help">Actívalo si te conectas mediante un adaptador USB inalámbrico como AAWireless o Carlinkit. Open Headunit no puede distinguir un dongle de un cable, por lo que esta opción cambia las etiquetas de la pantalla de inicio a inalámbrico.</string>
+     <string name="home_subtitle_usb_dongle">De forma inalámbrica</string>
+     <string name="home_action_connect_wireless_dongle">Conectar de forma inalámbrica</string>
++    <string name="home_wifi_not_connected">Wi-Fi no conectado</string>
++    <string name="home_wifi_off">El Wi-Fi está apagado</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi conectado</string>
++    <string name="home_wifi_scanning">Buscando…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d %%</string>
++    <string name="home_wifi_scan_started">Buscando redes Wi-Fi…</string>
++    <string name="home_wifi_scan_refused">Android no permite una búsqueda ahora. Vuelve a intentarlo en un momento.</string>
++    <string name="home_wifi_status_description">Wi-Fi: %1$s</string>
++    <string name="home_wifi_scan_button">Buscar Wi-Fi</string>
++    <string name="home_wifi_hotspot_hint">¿Está activa la zona Wi-Fi del teléfono?</string>
++    <string name="home_wifi_off_hint">Toca Buscar Wi-Fi para activarlo</string>
++    <string name="home_wifi_scan_description">Buscar redes Wi-Fi. Mantén pulsado para los ajustes de Wi-Fi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-fr/strings.xml b/app/src/main/res/values-fr/strings.xml
+index e2a5c1ed..8624c6b5 100644
+--- a/app/src/main/res/values-fr/strings.xml
++++ b/app/src/main/res/values-fr/strings.xml
+@@ -1922,4 +1922,19 @@
+     <string name="usb_wireless_dongle_help">Activez cette option si vous utilisez un adaptateur USB sans fil comme AAWireless ou Carlinkit. Open Headunit ne peut pas différencier un dongle d’un câble ; cette option remplace donc les libellés câble par sans fil sur l’écran d’accueil.</string>
+     <string name="home_subtitle_usb_dongle">Sans fil</string>
+     <string name="home_action_connect_wireless_dongle">Connecter sans fil</string>
++    <string name="home_wifi_not_connected">Wi-Fi non connecté</string>
++    <string name="home_wifi_off">Le Wi-Fi est désactivé</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi connecté</string>
++    <string name="home_wifi_scanning">Recherche…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d %%</string>
++    <string name="home_wifi_scan_started">Recherche de réseaux Wi-Fi…</string>
++    <string name="home_wifi_scan_refused">Android n’autorise pas de recherche pour le moment. Réessayez dans un instant.</string>
++    <string name="home_wifi_status_description">Wi-Fi : %1$s</string>
++    <string name="home_wifi_scan_button">Rechercher le Wi-Fi</string>
++    <string name="home_wifi_hotspot_hint">Le point d’accès du téléphone est-il activé ?</string>
++    <string name="home_wifi_off_hint">Touchez Rechercher le Wi-Fi pour l’activer</string>
++    <string name="home_wifi_scan_description">Rechercher des réseaux Wi-Fi. Appui long pour les réglages Wi-Fi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-h320dp/dimens.xml b/app/src/main/res/values-h320dp/dimens.xml
+index 8a1032a1..f58a6c51 100644
+--- a/app/src/main/res/values-h320dp/dimens.xml
++++ b/app/src/main/res/values-h320dp/dimens.xml
+@@ -52,4 +52,15 @@
+     <dimen name="home_widget_padding">3dp</dimen>
+     <dimen name="home_widget_strip_min">44dp</dimen>
+     <dimen name="home_widget_strip_max">100dp</dimen>
++    <!-- Headunit Server's WiFi line beside the main button's icon, and its Scan WiFi button. -->
++    <dimen name="home_wifi_status_gap">10dp</dimen>
++    <dimen name="home_wifi_dot">7dp</dimen>
++    <dimen name="home_wifi_meta_gap">6dp</dimen>
++    <dimen name="home_wifi_chip_padding_h">6dp</dimen>
++    <dimen name="home_wifi_bars_width">13dp</dimen>
++    <dimen name="home_wifi_bars_height">11dp</dimen>
++    <!-- The network name, and the icon both buttons lead with (the size of their label). -->
++    <dimen name="home_wifi_name_text">15sp</dimen>
++    <dimen name="home_cta_icon">17dp</dimen>
++    <dimen name="home_wifi_scan_padding_h">22dp</dimen>
+ </resources>
+diff --git a/app/src/main/res/values-h360dp/dimens.xml b/app/src/main/res/values-h360dp/dimens.xml
+index 32b49652..c220c263 100644
+--- a/app/src/main/res/values-h360dp/dimens.xml
++++ b/app/src/main/res/values-h360dp/dimens.xml
+@@ -50,4 +50,15 @@
+     <dimen name="home_widget_padding">6dp</dimen>
+     <dimen name="home_widget_strip_min">64dp</dimen>
+     <dimen name="home_widget_strip_max">180dp</dimen>
++    <!-- Headunit Server's WiFi line beside the main button's icon, and its Scan WiFi button. -->
++    <dimen name="home_wifi_status_gap">14dp</dimen>
++    <dimen name="home_wifi_dot">9dp</dimen>
++    <dimen name="home_wifi_meta_gap">8dp</dimen>
++    <dimen name="home_wifi_chip_padding_h">8dp</dimen>
++    <dimen name="home_wifi_bars_width">19dp</dimen>
++    <dimen name="home_wifi_bars_height">16dp</dimen>
++    <!-- The network name, and the icon both buttons lead with (the size of their label). -->
++    <dimen name="home_wifi_name_text">24sp</dimen>
++    <dimen name="home_cta_icon">29dp</dimen>
++    <dimen name="home_wifi_scan_padding_h">32dp</dimen>
+ </resources>
+diff --git a/app/src/main/res/values-hi/strings.xml b/app/src/main/res/values-hi/strings.xml
+index 59b51173..845fb985 100644
+--- a/app/src/main/res/values-hi/strings.xml
++++ b/app/src/main/res/values-hi/strings.xml
+@@ -1923,4 +1923,19 @@
+     <string name="usb_wireless_dongle_help">यदि आप AAWireless या Carlinkit जैसे वायरलेस USB अडैप्टर से कनेक्ट करते हैं तो इसे चालू करें। Open Headunit डोंगल और केबल में अंतर नहीं कर सकता, इसलिए यह विकल्प होम स्क्रीन के लेबल को केबल से वायरलेस में बदल देता है।</string>
+     <string name="home_subtitle_usb_dongle">वायरलेस रूप से</string>
+     <string name="home_action_connect_wireless_dongle">वायरलेस कनेक्ट करें</string>
++    <string name="home_wifi_not_connected">वाई-फ़ाई कनेक्ट नहीं है</string>
++    <string name="home_wifi_off">वाई-फ़ाई बंद है</string>
++    <string name="home_wifi_connected_unnamed">वाई-फ़ाई कनेक्ट है</string>
++    <string name="home_wifi_scanning">खोज रहे हैं…</string>
++    <string name="home_wifi_band_24">2.4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">वाई-फ़ाई नेटवर्क खोजे जा रहे हैं…</string>
++    <string name="home_wifi_scan_refused">Android अभी खोज की अनुमति नहीं देता। थोड़ी देर बाद फिर कोशिश करें।</string>
++    <string name="home_wifi_status_description">वाई-फ़ाई: %1$s</string>
++    <string name="home_wifi_scan_button">वाई-फ़ाई खोजें</string>
++    <string name="home_wifi_hotspot_hint">क्या फ़ोन का हॉटस्पॉट चालू है?</string>
++    <string name="home_wifi_off_hint">चालू करने के लिए वाई-फ़ाई खोजें पर टैप करें</string>
++    <string name="home_wifi_scan_description">वाई-फ़ाई नेटवर्क खोजें। वाई-फ़ाई सेटिंग के लिए देर तक दबाएँ।</string>
+ </resources>
+diff --git a/app/src/main/res/values-hu/strings.xml b/app/src/main/res/values-hu/strings.xml
+index 6990bf02..53d726c8 100644
+--- a/app/src/main/res/values-hu/strings.xml
++++ b/app/src/main/res/values-hu/strings.xml
+@@ -1877,4 +1877,19 @@
+     <string name="usb_wireless_dongle_help">Kapcsold be, ha vezeték nélküli USB-adapterrel (például AAWireless vagy Carlinkit) csatlakozol. Az Open Headunit nem tudja megkülönböztetni az adaptert a kábeltől, ezért ez az opció vezeték nélkülire cseréli a kezdőképernyő feliratait.</string>
+     <string name="home_subtitle_usb_dongle">Vezeték nélkül</string>
+     <string name="home_action_connect_wireless_dongle">Csatlakozás vezeték nélkül</string>
++    <string name="home_wifi_not_connected">A Wi-Fi nincs csatlakoztatva</string>
++    <string name="home_wifi_off">A Wi-Fi ki van kapcsolva</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi csatlakoztatva</string>
++    <string name="home_wifi_scanning">Keresés…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Wi-Fi-hálózatok keresése…</string>
++    <string name="home_wifi_scan_refused">Az Android most nem enged keresést. Próbáld újra kicsit később.</string>
++    <string name="home_wifi_status_description">Wi-Fi: %1$s</string>
++    <string name="home_wifi_scan_button">Wi-Fi keresése</string>
++    <string name="home_wifi_hotspot_hint">Be van kapcsolva a telefon hotspotja?</string>
++    <string name="home_wifi_off_hint">Bekapcsoláshoz koppints a Wi-Fi keresésére</string>
++    <string name="home_wifi_scan_description">Wi-Fi-hálózatok keresése. Hosszan nyomva a Wi-Fi-beállítások nyílnak meg.</string>
+ </resources>
+diff --git a/app/src/main/res/values-in/strings.xml b/app/src/main/res/values-in/strings.xml
+index 91b76ab1..fb56dca6 100644
+--- a/app/src/main/res/values-in/strings.xml
++++ b/app/src/main/res/values-in/strings.xml
+@@ -1924,4 +1924,19 @@
+     <string name="usb_wireless_dongle_help">Aktifkan ini jika Anda terhubung melalui adaptor USB nirkabel seperti AAWireless atau Carlinkit. Open Headunit tidak dapat membedakan dongle dari kabel, jadi opsi ini mengubah label layar utama dari kabel menjadi nirkabel.</string>
+     <string name="home_subtitle_usb_dongle">Secara nirkabel</string>
+     <string name="home_action_connect_wireless_dongle">Hubungkan secara nirkabel</string>
++    <string name="home_wifi_not_connected">WiFi tidak terhubung</string>
++    <string name="home_wifi_off">WiFi mati</string>
++    <string name="home_wifi_connected_unnamed">WiFi terhubung</string>
++    <string name="home_wifi_scanning">Memindai…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Memindai jaringan WiFi…</string>
++    <string name="home_wifi_scan_refused">Android belum mengizinkan pemindaian sekarang. Coba lagi sebentar lagi.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">Pindai WiFi</string>
++    <string name="home_wifi_hotspot_hint">Apakah hotspot ponsel menyala?</string>
++    <string name="home_wifi_off_hint">Ketuk Pindai WiFi untuk menyalakannya</string>
++    <string name="home_wifi_scan_description">Pindai jaringan WiFi. Tekan lama untuk pengaturan WiFi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-it/strings.xml b/app/src/main/res/values-it/strings.xml
+index 869cfc43..5ca474eb 100644
+--- a/app/src/main/res/values-it/strings.xml
++++ b/app/src/main/res/values-it/strings.xml
+@@ -1879,4 +1879,19 @@
+     <string name="usb_wireless_dongle_help">Attiva questa opzione se ti colleghi tramite un adattatore USB wireless come AAWireless o Carlinkit. Open Headunit non può distinguere un dongle da un cavo, quindi questa opzione cambia le etichette della schermata iniziale da cavo a wireless.</string>
+     <string name="home_subtitle_usb_dongle">In modalità wireless</string>
+     <string name="home_action_connect_wireless_dongle">Connetti in modalità wireless</string>
++    <string name="home_wifi_not_connected">WiFi non connesso</string>
++    <string name="home_wifi_off">Il WiFi è spento</string>
++    <string name="home_wifi_connected_unnamed">WiFi connesso</string>
++    <string name="home_wifi_scanning">Ricerca…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Ricerca di reti WiFi…</string>
++    <string name="home_wifi_scan_refused">Android non consente una ricerca in questo momento. Riprova tra poco.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">Cerca WiFi</string>
++    <string name="home_wifi_hotspot_hint">L’hotspot del telefono è attivo?</string>
++    <string name="home_wifi_off_hint">Tocca Cerca WiFi per accenderlo</string>
++    <string name="home_wifi_scan_description">Cerca reti WiFi. Tieni premuto per le impostazioni WiFi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-ja/strings.xml b/app/src/main/res/values-ja/strings.xml
+index 90a6807c..33eb51b9 100644
+--- a/app/src/main/res/values-ja/strings.xml
++++ b/app/src/main/res/values-ja/strings.xml
+@@ -1879,4 +1879,19 @@
+     <string name="usb_wireless_dongle_help">AAWireless や Carlinkit などのワイヤレス USB アダプターで接続する場合に有効にします。Open Headunit はドングルとケーブルを判別できないため、ホーム画面の表示をケーブルからワイヤレスに切り替えます。</string>
+     <string name="home_subtitle_usb_dongle">ワイヤレス接続</string>
+     <string name="home_action_connect_wireless_dongle">ワイヤレスで接続</string>
++    <string name="home_wifi_not_connected">Wi-Fi未接続</string>
++    <string name="home_wifi_off">Wi-Fiはオフです</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi接続済み</string>
++    <string name="home_wifi_scanning">スキャン中…</string>
++    <string name="home_wifi_band_24">2.4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Wi-Fiネットワークをスキャンしています…</string>
++    <string name="home_wifi_scan_refused">Androidは今スキャンを許可していません。少ししてからもう一度お試しください。</string>
++    <string name="home_wifi_status_description">Wi-Fi：%1$s</string>
++    <string name="home_wifi_scan_button">Wi-Fiをスキャン</string>
++    <string name="home_wifi_hotspot_hint">スマートフォンのテザリングはオンですか？</string>
++    <string name="home_wifi_off_hint">オンにするには［Wi-Fiをスキャン］をタップ</string>
++    <string name="home_wifi_scan_description">Wi-Fiネットワークをスキャンします。長押しでWi-Fi設定を開きます。</string>
+ </resources>
+diff --git a/app/src/main/res/values-ka/strings.xml b/app/src/main/res/values-ka/strings.xml
+index 9be2ff71..abfae84e 100644
+--- a/app/src/main/res/values-ka/strings.xml
++++ b/app/src/main/res/values-ka/strings.xml
+@@ -1862,4 +1862,19 @@
+     <string name="usb_wireless_dongle_help">ჩართეთ, თუ უკავშირდებით უსადენო USB ადაპტერით (მაგ. AAWireless ან Carlinkit). Open Headunit ვერ ასხვავებს დონგლს კაბელისგან, ამიტომ ეს პარამეტრი მთავარ ეკრანზე წარწერებს კაბელიდან უსადენოზე ცვლის.</string>
+     <string name="home_subtitle_usb_dongle">უსადენოდ</string>
+     <string name="home_action_connect_wireless_dongle">უსადენოდ დაკავშირება</string>
++    <string name="home_wifi_not_connected">WiFi არ არის დაკავშირებული</string>
++    <string name="home_wifi_off">WiFi გამორთულია</string>
++    <string name="home_wifi_connected_unnamed">WiFi დაკავშირებულია</string>
++    <string name="home_wifi_scanning">ძებნა…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">WiFi ქსელების ძებნა…</string>
++    <string name="home_wifi_scan_refused">Android ახლა ძებნის უფლებას არ იძლევა. ცოტა ხანში სცადეთ.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">WiFi-ს ძებნა</string>
++    <string name="home_wifi_hotspot_hint">ჩართულია ტელეფონის ჰოტსპოტი?</string>
++    <string name="home_wifi_off_hint">ჩასართავად შეეხეთ WiFi-ს ძებნას</string>
++    <string name="home_wifi_scan_description">WiFi ქსელების ძებნა. ხანგრძლივი დაჭერით WiFi პარამეტრები გაიხსნება.</string>
+ </resources>
+diff --git a/app/src/main/res/values-ko/strings.xml b/app/src/main/res/values-ko/strings.xml
+index 546391dc..224e0082 100644
+--- a/app/src/main/res/values-ko/strings.xml
++++ b/app/src/main/res/values-ko/strings.xml
+@@ -1871,4 +1871,19 @@
+     <string name="usb_wireless_dongle_help">AAWireless 또는 Carlinkit 같은 무선 USB 어댑터를 통해 연결하는 경우 켜세요. Open Headunit은 동글과 일반 케이블을 구분할 수 없으므로, 이 옵션으로 홈 화면 표시를 유선에서 무선으로 바꿉니다.</string>
+     <string name="home_subtitle_usb_dongle">무선으로</string>
+     <string name="home_action_connect_wireless_dongle">무선으로 연결</string>
++    <string name="home_wifi_not_connected">Wi-Fi 연결 안 됨</string>
++    <string name="home_wifi_off">Wi-Fi 꺼짐</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi 연결됨</string>
++    <string name="home_wifi_scanning">검색 중…</string>
++    <string name="home_wifi_band_24">2.4GHz</string>
++    <string name="home_wifi_band_5">5GHz</string>
++    <string name="home_wifi_band_6">6GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Wi-Fi 네트워크 검색 중…</string>
++    <string name="home_wifi_scan_refused">지금은 Android가 검색을 허용하지 않습니다. 잠시 후 다시 시도하세요.</string>
++    <string name="home_wifi_status_description">Wi-Fi: %1$s</string>
++    <string name="home_wifi_scan_button">Wi-Fi 검색</string>
++    <string name="home_wifi_hotspot_hint">휴대폰 핫스팟이 켜져 있나요?</string>
++    <string name="home_wifi_off_hint">켜려면 Wi-Fi 검색을 누르세요</string>
++    <string name="home_wifi_scan_description">Wi-Fi 네트워크를 검색합니다. 길게 누르면 Wi-Fi 설정이 열립니다.</string>
+ </resources>
+diff --git a/app/src/main/res/values-nl/strings.xml b/app/src/main/res/values-nl/strings.xml
+index 2dbb2d40..ecb3fb13 100644
+--- a/app/src/main/res/values-nl/strings.xml
++++ b/app/src/main/res/values-nl/strings.xml
+@@ -1881,4 +1881,19 @@
+     <string name="usb_wireless_dongle_help">Schakel dit in als je verbindt via een draadloze USB-adapter zoals AAWireless of Carlinkit. Open Headunit kan een dongle niet van een kabel onderscheiden, dus deze optie verandert de startschermteksten van kabel naar draadloos.</string>
+     <string name="home_subtitle_usb_dongle">Draadloos</string>
+     <string name="home_action_connect_wireless_dongle">Draadloos verbinden</string>
++    <string name="home_wifi_not_connected">Wifi niet verbonden</string>
++    <string name="home_wifi_off">Wifi staat uit</string>
++    <string name="home_wifi_connected_unnamed">Wifi verbonden</string>
++    <string name="home_wifi_scanning">Zoeken…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Zoeken naar wifinetwerken…</string>
++    <string name="home_wifi_scan_refused">Android staat nu geen zoekactie toe. Probeer het zo opnieuw.</string>
++    <string name="home_wifi_status_description">Wifi: %1$s</string>
++    <string name="home_wifi_scan_button">Wifi zoeken</string>
++    <string name="home_wifi_hotspot_hint">Staat de hotspot van de telefoon aan?</string>
++    <string name="home_wifi_off_hint">Tik op Wifi zoeken om het aan te zetten</string>
++    <string name="home_wifi_scan_description">Zoeken naar wifinetwerken. Lang indrukken voor de wifi-instellingen.</string>
+ </resources>
+diff --git a/app/src/main/res/values-pl/strings.xml b/app/src/main/res/values-pl/strings.xml
+index 491145a1..ea4e3580 100644
+--- a/app/src/main/res/values-pl/strings.xml
++++ b/app/src/main/res/values-pl/strings.xml
+@@ -1882,4 +1882,19 @@
+     <string name="usb_wireless_dongle_help">Włącz tę opcję, jeśli łączysz się przez bezprzewodowy adapter USB, np. AAWireless lub Carlinkit. Open Headunit nie odróżnia adaptera od kabla, więc ta opcja zmienia etykiety na ekranie głównym z kablowych na bezprzewodowe.</string>
+     <string name="home_subtitle_usb_dongle">Bezprzewodowo</string>
+     <string name="home_action_connect_wireless_dongle">Połącz bezprzewodowo</string>
++    <string name="home_wifi_not_connected">WiFi nie jest połączone</string>
++    <string name="home_wifi_off">WiFi jest wyłączone</string>
++    <string name="home_wifi_connected_unnamed">WiFi połączone</string>
++    <string name="home_wifi_scanning">Wyszukiwanie…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Wyszukiwanie sieci WiFi…</string>
++    <string name="home_wifi_scan_refused">Android nie pozwala teraz na wyszukiwanie. Spróbuj za chwilę.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">Szukaj WiFi</string>
++    <string name="home_wifi_hotspot_hint">Czy hotspot telefonu jest włączony?</string>
++    <string name="home_wifi_off_hint">Dotknij Szukaj WiFi, aby je włączyć</string>
++    <string name="home_wifi_scan_description">Szukaj sieci WiFi. Przytrzymaj, aby otworzyć ustawienia WiFi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-pt-rBR/strings.xml b/app/src/main/res/values-pt-rBR/strings.xml
+index 43af6a4d..e98110d6 100644
+--- a/app/src/main/res/values-pt-rBR/strings.xml
++++ b/app/src/main/res/values-pt-rBR/strings.xml
+@@ -1877,4 +1877,19 @@
+     <string name="usb_wireless_dongle_help">Ative se você se conecta por um adaptador USB sem fio como AAWireless ou Carlinkit. O Open Headunit não consegue diferenciar um dongle de um cabo, então esta opção muda os rótulos da tela inicial de cabo para sem fio.</string>
+     <string name="home_subtitle_usb_dongle">Sem fio</string>
+     <string name="home_action_connect_wireless_dongle">Conectar sem fio</string>
++    <string name="home_wifi_not_connected">WiFi não conectado</string>
++    <string name="home_wifi_off">O WiFi está desligado</string>
++    <string name="home_wifi_connected_unnamed">WiFi conectado</string>
++    <string name="home_wifi_scanning">Buscando…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Buscando redes WiFi…</string>
++    <string name="home_wifi_scan_refused">O Android não permite uma busca agora. Tente de novo em instantes.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">Buscar WiFi</string>
++    <string name="home_wifi_hotspot_hint">O hotspot do celular está ligado?</string>
++    <string name="home_wifi_off_hint">Toque em Buscar WiFi para ligá-lo</string>
++    <string name="home_wifi_scan_description">Buscar redes WiFi. Toque e segure para as configurações de WiFi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-pt-rPT/strings.xml b/app/src/main/res/values-pt-rPT/strings.xml
+index 23be2de7..05e23be1 100644
+--- a/app/src/main/res/values-pt-rPT/strings.xml
++++ b/app/src/main/res/values-pt-rPT/strings.xml
+@@ -1929,4 +1929,19 @@
+     <string name="usb_wireless_dongle_help">Ative esta opção se utiliza um adaptador USB sem fios como AAWireless ou Carlinkit. O Open Headunit não distingue um dongle de um cabo, pelo que esta opção altera os textos do ecrã inicial de cabo para sem fios.</string>
+     <string name="home_subtitle_usb_dongle">Sem fios</string>
+     <string name="home_action_connect_wireless_dongle">Ligar sem fios</string>
++    <string name="home_wifi_not_connected">Wi-Fi não ligado</string>
++    <string name="home_wifi_off">O Wi-Fi está desligado</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi ligado</string>
++    <string name="home_wifi_scanning">A procurar…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">A procurar redes Wi-Fi…</string>
++    <string name="home_wifi_scan_refused">O Android não permite uma procura agora. Tente novamente daqui a pouco.</string>
++    <string name="home_wifi_status_description">Wi-Fi: %1$s</string>
++    <string name="home_wifi_scan_button">Procurar Wi-Fi</string>
++    <string name="home_wifi_hotspot_hint">A zona Wi-Fi do telemóvel está ativa?</string>
++    <string name="home_wifi_off_hint">Toque em Procurar Wi-Fi para o ligar</string>
++    <string name="home_wifi_scan_description">Procurar redes Wi-Fi. Toque sem soltar para as definições de Wi-Fi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-ro/strings.xml b/app/src/main/res/values-ro/strings.xml
+index fe79be1a..1caf4b74 100644
+--- a/app/src/main/res/values-ro/strings.xml
++++ b/app/src/main/res/values-ro/strings.xml
+@@ -1875,4 +1875,19 @@
+     <string name="usb_wireless_dongle_help">Activează această opțiune dacă te conectezi printr-un adaptor USB wireless precum AAWireless sau Carlinkit. Open Headunit nu poate deosebi un dongle de un cablu, așa că această opțiune schimbă etichetele de pe ecranul principal din cablu în wireless.</string>
+     <string name="home_subtitle_usb_dongle">Wireless</string>
+     <string name="home_action_connect_wireless_dongle">Conectează wireless</string>
++    <string name="home_wifi_not_connected">WiFi neconectat</string>
++    <string name="home_wifi_off">WiFi este oprit</string>
++    <string name="home_wifi_connected_unnamed">WiFi conectat</string>
++    <string name="home_wifi_scanning">Se caută…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Se caută rețele WiFi…</string>
++    <string name="home_wifi_scan_refused">Android nu permite o căutare acum. Încearcă din nou puțin mai târziu.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">Caută WiFi</string>
++    <string name="home_wifi_hotspot_hint">Este pornit hotspotul telefonului?</string>
++    <string name="home_wifi_off_hint">Atinge Caută WiFi pentru a-l porni</string>
++    <string name="home_wifi_scan_description">Caută rețele WiFi. Apasă lung pentru setările WiFi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index 6b4c8a94..59df9aa1 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml
+@@ -1876,4 +1876,19 @@ Open Headunit предоставляется «как есть» без каки
+     <string name="usb_wireless_dongle_help">Включите, если подключаетесь через беспроводной USB-адаптер (например, AAWireless или Carlinkit). Open Headunit не может отличить адаптер от кабеля, поэтому эта настройка меняет подписи на главном экране с кабельных на беспроводные.</string>
+     <string name="home_subtitle_usb_dongle">Без проводов</string>
+     <string name="home_action_connect_wireless_dongle">Подключить без проводов</string>
++    <string name="home_wifi_not_connected">Wi‑Fi не подключён</string>
++    <string name="home_wifi_off">Wi‑Fi выключен</string>
++    <string name="home_wifi_connected_unnamed">Wi‑Fi подключён</string>
++    <string name="home_wifi_scanning">Поиск…</string>
++    <string name="home_wifi_band_24">2,4 ГГц</string>
++    <string name="home_wifi_band_5">5 ГГц</string>
++    <string name="home_wifi_band_6">6 ГГц</string>
++    <string name="home_wifi_signal">%1$d %%</string>
++    <string name="home_wifi_scan_started">Поиск сетей Wi‑Fi…</string>
++    <string name="home_wifi_scan_refused">Android сейчас не разрешает поиск. Попробуйте чуть позже.</string>
++    <string name="home_wifi_status_description">Wi‑Fi: %1$s</string>
++    <string name="home_wifi_scan_button">Найти Wi‑Fi</string>
++    <string name="home_wifi_hotspot_hint">Включена ли точка доступа телефона?</string>
++    <string name="home_wifi_off_hint">Нажмите «Найти Wi‑Fi», чтобы включить</string>
++    <string name="home_wifi_scan_description">Поиск сетей Wi‑Fi. Долгое нажатие откроет настройки Wi‑Fi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-th/strings.xml b/app/src/main/res/values-th/strings.xml
+index 0703c19b..b20f5b34 100644
+--- a/app/src/main/res/values-th/strings.xml
++++ b/app/src/main/res/values-th/strings.xml
+@@ -1930,4 +1930,19 @@
+     <string name="usb_wireless_dongle_help">เปิดใช้งานตัวเลือกนี้หากคุณเชื่อมต่อผ่านอะแดปเตอร์ USB ไร้สาย เช่น AAWireless หรือ Carlinkit Open Headunit ไม่สามารถแยกดองเกิลออกจากสายเคเบิลได้ ตัวเลือกนี้จึงเปลี่ยนข้อความบนหน้าจอหลักจากสายเคเบิลเป็นไร้สาย</string>
+     <string name="home_subtitle_usb_dongle">แบบไร้สาย</string>
+     <string name="home_action_connect_wireless_dongle">เชื่อมต่อแบบไร้สาย</string>
++    <string name="home_wifi_not_connected">ไม่ได้เชื่อมต่อ Wi-Fi</string>
++    <string name="home_wifi_off">Wi-Fi ปิดอยู่</string>
++    <string name="home_wifi_connected_unnamed">เชื่อมต่อ Wi-Fi แล้ว</string>
++    <string name="home_wifi_scanning">กำลังสแกน…</string>
++    <string name="home_wifi_band_24">2.4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">กำลังสแกนหาเครือข่าย Wi-Fi…</string>
++    <string name="home_wifi_scan_refused">ขณะนี้ Android ไม่อนุญาตให้สแกน โปรดลองอีกครั้งในอีกสักครู่</string>
++    <string name="home_wifi_status_description">Wi-Fi: %1$s</string>
++    <string name="home_wifi_scan_button">สแกน Wi-Fi</string>
++    <string name="home_wifi_hotspot_hint">ฮอตสปอตของโทรศัพท์เปิดอยู่หรือไม่</string>
++    <string name="home_wifi_off_hint">แตะ สแกน Wi-Fi เพื่อเปิด</string>
++    <string name="home_wifi_scan_description">สแกนหาเครือข่าย Wi-Fi กดค้างเพื่อเปิดการตั้งค่า Wi-Fi</string>
+ </resources>
+diff --git a/app/src/main/res/values-tr/strings.xml b/app/src/main/res/values-tr/strings.xml
+index cf922952..096e3c38 100644
+--- a/app/src/main/res/values-tr/strings.xml
++++ b/app/src/main/res/values-tr/strings.xml
+@@ -1872,4 +1872,19 @@
+     <string name="usb_wireless_dongle_help">AAWireless veya Carlinkit gibi bir kablosuz USB adaptörü ile bağlanıyorsanız bunu açın. Open Headunit bir dongle’ı kablodan ayırt edemez, bu yüzden bu seçenek ana ekran etiketlerini kablodan kablosuza çevirir.</string>
+     <string name="home_subtitle_usb_dongle">Kablosuz</string>
+     <string name="home_action_connect_wireless_dongle">Kablosuz bağlan</string>
++    <string name="home_wifi_not_connected">WiFi bağlı değil</string>
++    <string name="home_wifi_off">WiFi kapalı</string>
++    <string name="home_wifi_connected_unnamed">WiFi bağlı</string>
++    <string name="home_wifi_scanning">Taranıyor…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%%%1$d</string>
++    <string name="home_wifi_scan_started">WiFi ağları taranıyor…</string>
++    <string name="home_wifi_scan_refused">Android şu an taramaya izin vermiyor. Biraz sonra tekrar deneyin.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">WiFi tara</string>
++    <string name="home_wifi_hotspot_hint">Telefonun erişim noktası açık mı?</string>
++    <string name="home_wifi_off_hint">Açmak için WiFi tara’ya dokunun</string>
++    <string name="home_wifi_scan_description">WiFi ağlarını tara. WiFi ayarları için uzun basın.</string>
+ </resources>
+diff --git a/app/src/main/res/values-uk/strings.xml b/app/src/main/res/values-uk/strings.xml
+index f25a0799..fe3936b5 100644
+--- a/app/src/main/res/values-uk/strings.xml
++++ b/app/src/main/res/values-uk/strings.xml
+@@ -1880,4 +1880,19 @@
+     <string name="usb_wireless_dongle_help">Увімкніть, якщо підключаєтеся через бездротовий USB-адаптер, як-от AAWireless або Carlinkit. Open Headunit не може відрізнити адаптер від кабелю, тому цей параметр змінює підписи на головному екрані з кабелю на бездротове з’єднання.</string>
+     <string name="home_subtitle_usb_dongle">Бездротово</string>
+     <string name="home_action_connect_wireless_dongle">Підключити бездротово</string>
++    <string name="home_wifi_not_connected">Wi-Fi не підключено</string>
++    <string name="home_wifi_off">Wi-Fi вимкнено</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi підключено</string>
++    <string name="home_wifi_scanning">Пошук…</string>
++    <string name="home_wifi_band_24">2,4 ГГц</string>
++    <string name="home_wifi_band_5">5 ГГц</string>
++    <string name="home_wifi_band_6">6 ГГц</string>
++    <string name="home_wifi_signal">%1$d %%</string>
++    <string name="home_wifi_scan_started">Пошук мереж Wi-Fi…</string>
++    <string name="home_wifi_scan_refused">Android зараз не дозволяє пошук. Спробуйте трохи пізніше.</string>
++    <string name="home_wifi_status_description">Wi-Fi: %1$s</string>
++    <string name="home_wifi_scan_button">Знайти Wi-Fi</string>
++    <string name="home_wifi_hotspot_hint">Чи ввімкнено точку доступу телефона?</string>
++    <string name="home_wifi_off_hint">Торкніться «Знайти Wi-Fi», щоб увімкнути</string>
++    <string name="home_wifi_scan_description">Пошук мереж Wi-Fi. Довге натискання відкриє налаштування Wi-Fi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-vi/strings.xml b/app/src/main/res/values-vi/strings.xml
+index c17f3ff2..c0ad6c46 100644
+--- a/app/src/main/res/values-vi/strings.xml
++++ b/app/src/main/res/values-vi/strings.xml
+@@ -1879,4 +1879,19 @@
+     <string name="usb_wireless_dongle_help">Bật tùy chọn này nếu bạn kết nối qua bộ chuyển đổi USB không dây như AAWireless hoặc Carlinkit. Open Headunit không thể phân biệt dongle với cáp, nên tùy chọn này đổi nhãn màn hình chính từ cáp sang không dây.</string>
+     <string name="home_subtitle_usb_dongle">Không dây</string>
+     <string name="home_action_connect_wireless_dongle">Kết nối không dây</string>
++    <string name="home_wifi_not_connected">Chưa kết nối WiFi</string>
++    <string name="home_wifi_off">WiFi đang tắt</string>
++    <string name="home_wifi_connected_unnamed">Đã kết nối WiFi</string>
++    <string name="home_wifi_scanning">Đang quét…</string>
++    <string name="home_wifi_band_24">2,4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Đang quét mạng WiFi…</string>
++    <string name="home_wifi_scan_refused">Android hiện chưa cho phép quét. Hãy thử lại sau ít phút.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">Quét WiFi</string>
++    <string name="home_wifi_hotspot_hint">Điểm phát của điện thoại đã bật chưa?</string>
++    <string name="home_wifi_off_hint">Chạm Quét WiFi để bật</string>
++    <string name="home_wifi_scan_description">Quét mạng WiFi. Nhấn giữ để mở cài đặt WiFi.</string>
+ </resources>
+diff --git a/app/src/main/res/values-w400dp-h520dp/dimens.xml b/app/src/main/res/values-w400dp-h520dp/dimens.xml
+index b7612932..aa0652f1 100644
+--- a/app/src/main/res/values-w400dp-h520dp/dimens.xml
++++ b/app/src/main/res/values-w400dp-h520dp/dimens.xml
+@@ -47,4 +47,15 @@
+     <dimen name="home_widget_padding">10dp</dimen>
+     <dimen name="home_widget_strip_min">72dp</dimen>
+     <dimen name="home_widget_strip_max">220dp</dimen>
++    <!-- Headunit Server's WiFi line beside the main button's icon, and its Scan WiFi button. -->
++    <dimen name="home_wifi_status_gap">18dp</dimen>
++    <dimen name="home_wifi_dot">10dp</dimen>
++    <dimen name="home_wifi_meta_gap">10dp</dimen>
++    <dimen name="home_wifi_chip_padding_h">10dp</dimen>
++    <dimen name="home_wifi_bars_width">24dp</dimen>
++    <dimen name="home_wifi_bars_height">20dp</dimen>
++    <!-- The network name, and the icon both buttons lead with (the size of their label). -->
++    <dimen name="home_wifi_name_text">32sp</dimen>
++    <dimen name="home_cta_icon">38dp</dimen>
++    <dimen name="home_wifi_scan_padding_h">44dp</dimen>
+ </resources>
+diff --git a/app/src/main/res/values-zh-rCN/strings.xml b/app/src/main/res/values-zh-rCN/strings.xml
+index 77f3ef3c..079705da 100644
+--- a/app/src/main/res/values-zh-rCN/strings.xml
++++ b/app/src/main/res/values-zh-rCN/strings.xml
+@@ -1875,4 +1875,19 @@
+     <string name="usb_wireless_dongle_help">如果您通过 AAWireless 或 Carlinkit 等无线 USB 适配器连接，请开启此选项。Open Headunit 无法区分适配器与数据线，开启后会将主屏幕上的文字从有线更改为无线。</string>
+     <string name="home_subtitle_usb_dongle">无线连接</string>
+     <string name="home_action_connect_wireless_dongle">无线连接</string>
++    <string name="home_wifi_not_connected">WLAN 未连接</string>
++    <string name="home_wifi_off">WLAN 已关闭</string>
++    <string name="home_wifi_connected_unnamed">WLAN 已连接</string>
++    <string name="home_wifi_scanning">正在扫描…</string>
++    <string name="home_wifi_band_24">2.4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">正在扫描 WLAN 网络…</string>
++    <string name="home_wifi_scan_refused">Android 现在不允许扫描，请稍后再试。</string>
++    <string name="home_wifi_status_description">WLAN：%1$s</string>
++    <string name="home_wifi_scan_button">扫描 WLAN</string>
++    <string name="home_wifi_hotspot_hint">手机热点已开启吗？</string>
++    <string name="home_wifi_off_hint">点按“扫描 WLAN”以开启</string>
++    <string name="home_wifi_scan_description">扫描 WLAN 网络。长按打开 WLAN 设置。</string>
+ </resources>
+diff --git a/app/src/main/res/values-zh-rTW/strings.xml b/app/src/main/res/values-zh-rTW/strings.xml
+index 78c5bdcc..e027b047 100644
+--- a/app/src/main/res/values-zh-rTW/strings.xml
++++ b/app/src/main/res/values-zh-rTW/strings.xml
+@@ -1875,4 +1875,19 @@
+     <string name="usb_wireless_dongle_help">如果您透過 AAWireless 或 Carlinkit 等無線 USB 轉接器連線，請開啟此選項。Open Headunit 無法區分轉接器與傳輸線，開啟後會將主畫面文字從有線改為無線。</string>
+     <string name="home_subtitle_usb_dongle">無線連線</string>
+     <string name="home_action_connect_wireless_dongle">無線連線</string>
++    <string name="home_wifi_not_connected">Wi-Fi 未連線</string>
++    <string name="home_wifi_off">Wi-Fi 已關閉</string>
++    <string name="home_wifi_connected_unnamed">Wi-Fi 已連線</string>
++    <string name="home_wifi_scanning">正在掃描…</string>
++    <string name="home_wifi_band_24">2.4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">正在掃描 Wi-Fi 網路…</string>
++    <string name="home_wifi_scan_refused">Android 目前不允許掃描，請稍後再試。</string>
++    <string name="home_wifi_status_description">Wi-Fi：%1$s</string>
++    <string name="home_wifi_scan_button">掃描 Wi-Fi</string>
++    <string name="home_wifi_hotspot_hint">手機熱點已開啟嗎？</string>
++    <string name="home_wifi_off_hint">輕觸「掃描 Wi-Fi」即可開啟</string>
++    <string name="home_wifi_scan_description">掃描 Wi-Fi 網路。長按開啟 Wi-Fi 設定。</string>
+ </resources>
+diff --git a/app/src/main/res/values/dimens.xml b/app/src/main/res/values/dimens.xml
+index dd7b0ece..fee1e643 100644
+--- a/app/src/main/res/values/dimens.xml
++++ b/app/src/main/res/values/dimens.xml
+@@ -79,4 +79,15 @@
+     <dimen name="home_hint_button_height_small">48dp</dimen>
+     <dimen name="home_hint_art">88dp</dimen>
+     <dimen name="home_hint_art_small">64dp</dimen>
++    <!-- Headunit Server's WiFi line beside the main button's icon, and its Scan WiFi button. -->
++    <dimen name="home_wifi_status_gap">8dp</dimen>
++    <dimen name="home_wifi_dot">6dp</dimen>
++    <dimen name="home_wifi_meta_gap">5dp</dimen>
++    <dimen name="home_wifi_chip_padding_h">5dp</dimen>
++    <dimen name="home_wifi_bars_width">11dp</dimen>
++    <dimen name="home_wifi_bars_height">9dp</dimen>
++    <!-- The network name, and the icon both buttons lead with (the size of their label). -->
++    <dimen name="home_wifi_name_text">13sp</dimen>
++    <dimen name="home_cta_icon">15dp</dimen>
++    <dimen name="home_wifi_scan_padding_h">18dp</dimen>
+ </resources>
+diff --git a/app/src/main/res/values/ids.xml b/app/src/main/res/values/ids.xml
+index 6fceb157..971141f4 100644
+--- a/app/src/main/res/values/ids.xml
++++ b/app/src/main/res/values/ids.xml
+@@ -10,6 +10,9 @@
+     <item name="home_progress_shine" type="id" />
+     <item name="home_progress_shine_detach" type="id" />
+     <item name="home_tile_shine" type="id" />
++    <!-- Scan WiFi's turning ring, and the widths the WiFi line was fitted to. -->
++    <item name="home_wifi_scan_spin" type="id" />
++    <item name="home_wifi_meta_fit" type="id" />
+     <item name="home_tile_shine_detach" type="id" />
+     <!-- The favorite apps' own page, on a screen too small for them beside the main button. -->
+     <item name="home_page_apps" type="id" />
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 4efa3998..44877540 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1955,4 +1955,19 @@
+     <string name="audio_matching_phase_gradient_hint">Slow playback</string>
+     <string name="audio_matching_option" translatable="false">%1$s\n(%2$s)</string>
+     <string name="audio_matching_description">OHU remains the default. WSOLA aligns overlapping waveforms; Phase Vocoder adjusts spectral phases. Short uses a shorter analysis window. Phase Gradient integrates phase gradients to reconstruct phases. These independent methods add processing latency; their names do not rank sound quality.\n\nNative methods: PCM music. Navigation, voice responses, system sounds and AAC use OHU.\nReconnect to apply. Removed engine preferences reset to OHU.</string>
++    <string name="home_wifi_not_connected">WiFi not connected</string>
++    <string name="home_wifi_off">WiFi is off</string>
++    <string name="home_wifi_connected_unnamed">WiFi connected</string>
++    <string name="home_wifi_scanning">Scanning…</string>
++    <string name="home_wifi_band_24">2.4 GHz</string>
++    <string name="home_wifi_band_5">5 GHz</string>
++    <string name="home_wifi_band_6">6 GHz</string>
++    <string name="home_wifi_signal">%1$d%%</string>
++    <string name="home_wifi_scan_started">Scanning for WiFi networks…</string>
++    <string name="home_wifi_scan_refused">Android does not allow a scan right now. Try again in a little while.</string>
++    <string name="home_wifi_status_description">WiFi: %1$s</string>
++    <string name="home_wifi_scan_button">Scan WiFi</string>
++    <string name="home_wifi_hotspot_hint">Is the phone’s hotspot on?</string>
++    <string name="home_wifi_off_hint">Tap Scan WiFi to turn it on</string>
++    <string name="home_wifi_scan_description">Scan for WiFi networks. Long press for WiFi settings.</string>
+ </resources>
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusLayoutTest.kt b/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusLayoutTest.kt
+new file mode 100644
+index 00000000..798b0579
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusLayoutTest.kt
+@@ -0,0 +1,101 @@
++package com.andrerinas.openheadunit.main
++
++import android.app.Application
++import android.view.View
++import android.widget.FrameLayout
++import android.widget.TextView
++import androidx.appcompat.app.AppCompatActivity
++import com.andrerinas.openheadunit.R
++import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
++import com.andrerinas.openheadunit.utils.HomeUiHelper
++import com.andrerinas.openheadunit.utils.Settings
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.Robolectric
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.annotation.Config
++import org.robolectric.annotation.GraphicsMode
++
++/**
++ * The home with Headunit Server's WiFi line and Scan WiFi button, laid out on the real layout with
++ * the real painting and fitting code: nothing is cut on head unit screens, and on a portrait phone
++ * the main button keeps its room because Scan WiFi drops to its icon.
++ */
++@RunWith(RobolectricTestRunner::class)
++@GraphicsMode(GraphicsMode.Mode.NATIVE)
++@Config(application = Application::class, sdk = [34])
++class HomeWifiStatusLayoutTest {
++
++    private fun layOut(connected: Boolean): View {
++        val controller = Robolectric.buildActivity(AppCompatActivity::class.java)
++        controller.get().setTheme(R.style.AppTheme)
++        val activity = controller.create().get()
++        val dm = activity.resources.displayMetrics
++        val settings = Settings(activity).apply { wifiConnectionMode = WifiLauncherMode.AUTO }
++        val root = FrameLayout(activity)
++        activity.layoutInflater.inflate(R.layout.fragment_home, root, true)
++        val decision = HomePrimaryPolicy.decide(HomePrimaryPolicy.Input(
++            chosen = setOf(HomePrimaryPolicy.Connection.WIFI), lastConnection = HomePrimaryPolicy.Connection.WIFI,
++            usbPhoneDetected = false, sessionActive = false, reconnectTarget = null, wifiScanning = false,
++        ))
++        val palette = HomeUiHelper.palette(activity, HomeThemePolicy.Mode.DAY)
++        HomeUiHelper.applyPrimaryCard(activity, root, settings, decision, null, 0, palette)
++        val facts = if (connected) HomeWifiStatusPolicy.Facts(true, true, "\"Galaxy S24 Ultra\"", 5180, -60)
++            else HomeWifiStatusPolicy.Facts(true, false)
++        HomeUiHelper.applyWifiStatus(activity, root, settings, decision, palette,
++            HomeWifiStatusPolicy.line(true, true, facts), scanning = false)
++        for (pass in 0 until 6) {
++            root.measure(View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.EXACTLY),
++                View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.EXACTLY))
++            root.layout(0, 0, dm.widthPixels, dm.heightPixels)
++            if (!HomeUiHelper.fitWifiStatus(activity, root)) break
++        }
++        return root
++    }
++
++    private fun ellipsized(v: TextView) = (0 until v.layout.lineCount).any { v.layout.getEllipsisCount(it) > 0 }
++
++    private fun assertHeadUnitFits() {
++        for (connected in listOf(true, false)) {
++            val root = layOut(connected)
++            val action = root.findViewById<TextView>(R.id.home_primary_action)
++            val scan = root.findViewById<View>(R.id.home_wifi_scan)
++            val label = root.findViewById<TextView>(R.id.home_wifi_scan_label)
++            assertEquals(View.VISIBLE, scan.visibility)
++            assertEquals("Scan WiFi keeps its label", View.VISIBLE, label.visibility)
++            assertEquals("both buttons are as tall", action.height, scan.height)
++            assertTrue(action.right <= scan.left)
++            assertTrue("the main button's label is whole", !ellipsized(action) && action.layout.lineCount == 1)
++            assertTrue("the network name is whole", !ellipsized(root.findViewById(R.id.home_wifi_name)))
++            assertTrue("Scan WiFi stays inside the card", scan.right <= (scan.parent.parent as View).width)
++        }
++    }
++
++    @Test @Config(qualifiers = "w1920dp-h720dp-land-mdpi") fun `a 1920x720 head unit`() = assertHeadUnitFits()
++    @Test @Config(qualifiers = "w1280dp-h480dp-land-mdpi") fun `a 1280x480 head unit`() = assertHeadUnitFits()
++    @Test @Config(qualifiers = "w1024dp-h600dp-land-mdpi") fun `a 1024x600 head unit`() = assertHeadUnitFits()
++    @Test @Config(qualifiers = "w853dp-h320dp-land-hdpi") fun `a 1280x480 hdpi head unit`() = assertHeadUnitFits()
++    @Test @Config(qualifiers = "w533dp-h300dp-land-hdpi") fun `an 800x450 head unit`() = assertHeadUnitFits()
++
++    @Test @Config(qualifiers = "w411dp-h891dp-port-xxhdpi")
++    fun `a portrait phone keeps the main button whole and steps Scan WiFi aside`() {
++        for (connected in listOf(true, false)) {
++            val root = layOut(connected)
++            val action = root.findViewById<TextView>(R.id.home_primary_action)
++            assertEquals(View.GONE, root.findViewById<View>(R.id.home_wifi_scan).visibility)
++            assertTrue("the main button's label is whole", !ellipsized(action))
++            assertEquals("the WiFi line still tells the state", View.VISIBLE, root.findViewById<View>(R.id.home_wifi_status).visibility)
++            assertTrue("the network name is whole", !ellipsized(root.findViewById(R.id.home_wifi_name)))
++        }
++    }
++
++    @Test @Config(qualifiers = "w600dp-h960dp-port-hdpi")
++    fun `a portrait tablet keeps Scan WiFi`() {
++        val root = layOut(connected = false)
++        val action = root.findViewById<TextView>(R.id.home_primary_action)
++        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.home_wifi_scan).visibility)
++        assertTrue(!ellipsized(action))
++    }
++}
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicyTest.kt b/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicyTest.kt
+new file mode 100644
+index 00000000..4b8518ce
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/main/HomeWifiStatusPolicyTest.kt
+@@ -0,0 +1,111 @@
++package com.andrerinas.openheadunit.main
++
++import com.andrerinas.openheadunit.main.HomeWifiStatusPolicy.Band
++import com.andrerinas.openheadunit.main.HomeWifiStatusPolicy.Facts
++import com.andrerinas.openheadunit.main.HomeWifiStatusPolicy.Kind
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class HomeWifiStatusPolicyTest {
++
++    private val onPhone = Facts(wifiEnabled = true, connected = true, rawSsid = "\"Galaxy S24\"", frequencyMhz = 5180, rssiDbm = -65)
++
++    private fun line(facts: Facts, headunitServer: Boolean = true, cardIsWifi: Boolean = true) =
++        HomeWifiStatusPolicy.line(headunitServer, cardIsWifi, facts)
++
++    @Test
++    fun `shown only for Headunit Server while the card is the WiFi one`() {
++        assertEquals(Kind.HIDDEN, line(onPhone, headunitServer = false).kind)
++        assertEquals(Kind.HIDDEN, line(onPhone, cardIsWifi = false).kind)
++        assertEquals(Kind.CONNECTED, line(onPhone).kind)
++    }
++
++    @Test
++    fun `a connected unit shows the network, its band and its signal`() {
++        val l = line(onPhone)
++        assertEquals("Galaxy S24", l.ssid)
++        assertEquals(Band.GHZ_5, l.band)
++        assertEquals(70, l.signalPercent)
++        assertEquals(3, l.bars)
++        assertFalse(l.needsAttention)
++    }
++
++    @Test
++    fun `without location access the name is left out, not made up`() {
++        val l = line(onPhone.copy(rawSsid = "<unknown ssid>"))
++        assertEquals(Kind.CONNECTED, l.kind)
++        assertNull(l.ssid)
++    }
++
++    @Test
++    fun `off and not connected are told apart, and both call for the scan`() {
++        val off = line(Facts(wifiEnabled = false, connected = false))
++        val away = line(Facts(wifiEnabled = true, connected = false))
++        assertEquals(Kind.OFF, off.kind)
++        assertEquals(Kind.NOT_CONNECTED, away.kind)
++        assertTrue(off.needsAttention)
++        assertTrue(away.needsAttention)
++    }
++
++    @Test
++    fun `the scan button shows while the card is idle or only listening`() {
++        val l = line(Facts(wifiEnabled = true, connected = false))
++        for (status in listOf(HomePrimaryPolicy.Status.READY, HomePrimaryPolicy.Status.SEARCHING,
++            HomePrimaryPolicy.Status.WAITING, HomePrimaryPolicy.Status.PHONE_DETECTED)) {
++            assertTrue(status.name, HomeWifiStatusPolicy.showsScanButton(l, HomeWifiStatusPolicy.cardIdle(status)))
++        }
++    }
++
++    @Test
++    fun `the scan button stays out of a bring-up, the countdown and a session`() {
++        val l = line(onPhone)
++        for (status in listOf(HomePrimaryPolicy.Status.CONNECTING, HomePrimaryPolicy.Status.RECONNECTING,
++            HomePrimaryPolicy.Status.ACTIVE_SESSION)) {
++            assertFalse(status.name, HomeWifiStatusPolicy.showsScanButton(l, HomeWifiStatusPolicy.cardIdle(status)))
++        }
++        assertFalse("never outside Headunit Server",
++            HomeWifiStatusPolicy.showsScanButton(line(onPhone, headunitServer = false), cardIdle = true))
++    }
++
++    @Test
++    fun `bands by frequency`() {
++        assertEquals(Band.GHZ_2_4, HomeWifiStatusPolicy.band(2437))
++        assertEquals(Band.GHZ_5, HomeWifiStatusPolicy.band(5200))
++        assertEquals(Band.GHZ_6, HomeWifiStatusPolicy.band(5955))
++        assertNull(HomeWifiStatusPolicy.band(null))
++        assertNull(HomeWifiStatusPolicy.band(-1))
++    }
++
++    @Test
++    fun `signal runs from 0 at -100 dBm to 100 at -50 dBm`() {
++        assertEquals(0, HomeWifiStatusPolicy.signalPercent(-100))
++        assertEquals(0, HomeWifiStatusPolicy.signalPercent(-110))
++        assertEquals(50, HomeWifiStatusPolicy.signalPercent(-75))
++        assertEquals(100, HomeWifiStatusPolicy.signalPercent(-50))
++        assertEquals(100, HomeWifiStatusPolicy.signalPercent(-30))
++        assertNull("Android's no-reading value", HomeWifiStatusPolicy.signalPercent(-127))
++        assertNull(HomeWifiStatusPolicy.signalPercent(null))
++    }
++
++    @Test
++    fun `four bars by quarter, none without a reading`() {
++        assertEquals(0, HomeWifiStatusPolicy.barsFor(null))
++        assertEquals(0, HomeWifiStatusPolicy.barsFor(0))
++        assertEquals(1, HomeWifiStatusPolicy.barsFor(10))
++        assertEquals(2, HomeWifiStatusPolicy.barsFor(25))
++        assertEquals(3, HomeWifiStatusPolicy.barsFor(74))
++        assertEquals(4, HomeWifiStatusPolicy.barsFor(75))
++        assertEquals(4, HomeWifiStatusPolicy.barsFor(100))
++    }
++
++    @Test
++    fun `Scan WiFi keeps its label while the row holds both buttons`() {
++        assertFalse(HomeWifiStatusPolicy.scanCompact(availablePx = 1644, actionNeededPx = 360, gapPx = 20, scanFullPx = 289, othersPx = 0))
++        assertTrue("a portrait phone", HomeWifiStatusPolicy.scanCompact(availablePx = 873, actionNeededPx = 640, gapPx = 60, scanFullPx = 869, othersPx = 0))
++        assertTrue("Cancel beside them", HomeWifiStatusPolicy.scanCompact(availablePx = 900, actionNeededPx = 360, gapPx = 20, scanFullPx = 289, othersPx = 300))
++        assertFalse("not measured yet", HomeWifiStatusPolicy.scanCompact(availablePx = 0, actionNeededPx = 360, gapPx = 20, scanFullPx = 289, othersPx = 0))
++    }
++}
