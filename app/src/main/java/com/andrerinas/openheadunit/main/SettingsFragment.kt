@@ -45,6 +45,7 @@ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.esp32.Esp32Rel
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.CredentialField
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeAaWakeDamagePolicy
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.zbt.ZbtProbe
+import com.andrerinas.openheadunit.input.AaKeyGroupPolicy
 import com.andrerinas.openheadunit.input.MediaKeyRoutingPolicy
 import com.andrerinas.openheadunit.location.SpeedVolumePolicy
 import com.andrerinas.openheadunit.connection.wifi.direct.ObservedP2pCredentials
@@ -209,6 +210,7 @@ class SettingsFragment : Fragment() {
     private var pendingMicInputSource by pending::micInputSource
     private var pendingEnableRotary by pending::enableRotary
     private var pendingMediaKeyRouting by pending::mediaKeyRouting
+    private var pendingAaKeyGroupsHeldBack by pending::aaKeyGroupsHeldBack
     private var pendingVolumeKeysToPhone by pending::volumeKeysToPhone
     private var pendingSpeedVolumeMode by pending::speedVolumeMode
     private var pendingAudioLatencyMultiplier by pending::audioLatencyMultiplier
@@ -671,6 +673,7 @@ class SettingsFragment : Fragment() {
         pendingMicInputSource?.let { if (it != settings.micInputSource) settings.micInputSource = it }
         pendingEnableRotary?.let { if (it != settings.enableRotary) settings.enableRotary = it }
         pendingMediaKeyRouting?.let { if (it != settings.mediaKeyRouting) settings.mediaKeyRouting = it }
+        pendingAaKeyGroupsHeldBack?.let { if (it != settings.aaKeyGroupsHeldBack) settings.aaKeyGroupsHeldBack = it }
         pendingVolumeKeysToPhone?.let { if (it != settings.volumeKeysToPhone) settings.volumeKeysToPhone = it }
         pendingSpeedVolumeMode?.let { if (it != settings.speedVolumeMode) settings.speedVolumeMode = it }
         pendingAudioLatencyMultiplier?.let { if (it != settings.audioLatencyMultiplier) settings.audioLatencyMultiplier = it }
@@ -2341,6 +2344,19 @@ class SettingsFragment : Fragment() {
             ))
         }
 
+        // Every other key, by group. A car whose factory system keeps the steering wheel still sends
+        // its OK and Back here, and Android Auto acts on them; holding a group back stops that.
+        // Bound keys are not affected, see AaKeyGroupPolicy.
+        items.add(SettingItem.SettingEntry(
+            stableId = "aaKeyGroups",
+            nameResId = R.string.aa_key_groups,
+            value = aaKeyGroupsSummary(pendingAaKeyGroupsHeldBack ?: settings.aaKeyGroupsHeldBack),
+            helpResId = R.string.aa_key_groups_help,
+            searchKeywords = kw(R.string.aa_key_group_select, R.string.aa_key_group_direction, R.string.aa_key_group_back,
+                R.string.aa_key_group_phone, R.string.aa_key_group_assistant, R.string.aa_key_group_other),
+            onClick = { showAaKeyGroupsDialog() }
+        ))
+
         // For a phone that plays its own audio: with Audio Sink on, this head unit plays the sound
         // and its own volume is the one that matters, so this stays a choice and is off by default.
         items.add(SettingItem.ToggleSettingEntry(
@@ -3308,6 +3324,42 @@ class SettingsFragment : Fragment() {
         } catch (_: Exception) {
         }
         return m.widthPixels to m.heightPixels
+    }
+
+    private fun aaKeyGroupLabel(group: AaKeyGroupPolicy.Group): Int = when (group) {
+        AaKeyGroupPolicy.Group.SELECT -> R.string.aa_key_group_select
+        AaKeyGroupPolicy.Group.DIRECTION -> R.string.aa_key_group_direction
+        AaKeyGroupPolicy.Group.BACK -> R.string.aa_key_group_back
+        AaKeyGroupPolicy.Group.PHONE -> R.string.aa_key_group_phone
+        AaKeyGroupPolicy.Group.ASSISTANT -> R.string.aa_key_group_assistant
+        AaKeyGroupPolicy.Group.OTHER -> R.string.aa_key_group_other
+    }
+
+    /** "All", "None", or the groups held back, in the dialog's order. */
+    private fun aaKeyGroupsSummary(heldBack: Set<AaKeyGroupPolicy.Group>): String = when {
+        heldBack.isEmpty() -> getString(R.string.aa_key_groups_all)
+        heldBack.size == AaKeyGroupPolicy.Group.values().size -> getString(R.string.aa_key_groups_none)
+        else -> getString(R.string.aa_key_groups_except, AaKeyGroupPolicy.Group.values()
+            .filter { it in heldBack }.joinToString(", ") { getString(aaKeyGroupLabel(it)) })
+    }
+
+    /** Ticked groups are sent; saved with the rest of the screen, like every other choice here. */
+    private fun showAaKeyGroupsDialog() {
+        val groups = AaKeyGroupPolicy.Group.values()
+        val heldBack = pendingAaKeyGroupsHeldBack ?: settings.aaKeyGroupsHeldBack
+        val labels = groups.map { getString(aaKeyGroupLabel(it)) }.toTypedArray()
+        val checked = BooleanArray(groups.size) { groups[it] !in heldBack }
+        MaterialAlertDialogBuilder(requireContext(), R.style.DarkAlertDialog)
+            .setTitle(R.string.aa_key_groups)
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setPositiveButton(android.R.string.ok) { dialog, _ ->
+                pendingAaKeyGroupsHeldBack = groups.filterIndexed { i, _ -> !checked[i] }.toSet()
+                checkChanges()
+                updateSettingsList()
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun showConnectionModeDialog() {

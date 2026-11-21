@@ -9,6 +9,7 @@ import com.andrerinas.openheadunit.aap.DimState
 import com.andrerinas.openheadunit.aap.AaPresentationSession
 import com.andrerinas.openheadunit.aap.AapTransport
 import com.andrerinas.openheadunit.aap.NarrowBandProfilePolicy
+import com.andrerinas.openheadunit.input.AaKeyGroupPolicy
 import com.andrerinas.openheadunit.input.InputAction
 import com.andrerinas.openheadunit.input.InputActionCodec
 import com.andrerinas.openheadunit.input.KeyBindingPolicy
@@ -1360,6 +1361,17 @@ class CommManager(
                     AppLog.v("CommManager: Ignoring unmapped proprietary key $keyCode")
                     return
                 }
+                // 3. Key groups the user holds back, such as a steering wheel's OK that drives the
+                // car's own system. Unbound keys only: a binding names its Android Auto key on
+                // purpose. See AaKeyGroupPolicy.
+                val heldBack = settings.aaKeyGroupsHeldBack
+                if (!AaKeyGroupPolicy.shouldForward(keyCode, heldBack)) {
+                    if (isPress) {
+                        AppLog.i("CommManager: Not sending key $keyCode to Android Auto: " +
+                            "${AaKeyGroupPolicy.groupOf(keyCode)?.id} keys are held back (src=$source)")
+                    }
+                    return
+                }
                 keyCode
             }
         }
@@ -1384,7 +1396,7 @@ class CommManager(
 
         val isMedia = isMediaKey(logicalCode)
 
-        // 3. Routing: a media button the head unit's own Bluetooth side is already acting on must
+        // 4. Routing: a media button the head unit's own Bluetooth side is already acting on must
         // not be sent again, or one press performs the action twice. See MediaKeyRoutingPolicy.
         // Only media keys can be held back, so nothing else pays for the Bluetooth probe.
         if (isMedia) {
@@ -1396,7 +1408,7 @@ class CommManager(
             }
         }
 
-        // 4. De-duplication: one press reaches us from several delivery paths at once.
+        // 5. De-duplication: one press reaches us from several delivery paths at once.
         val state = keyStates[logicalCode] ?: KeyDebouncePolicy.KeyState()
         val decision = KeyDebouncePolicy.decide(
             state = state,

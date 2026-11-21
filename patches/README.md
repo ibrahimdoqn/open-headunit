@@ -7,10 +7,11 @@ tutar. Upstream güncellenince patch'leri yeni sürümün üstüne yeniden uygul
 | Patch | Ne yapar |
 |---|---|
 | `0001-Add-a-workflow-that-builds-a-release-APK-signed-with.patch` | GitHub'da kendi anahtarınızla imzalı APK derleyen iş akışı ve `SIGNING.md` kurulum notları. |
-| `0002-Home-WiFi-status-and-a-Scan-WiFi-button-for-Headunit.patch` | Ana ekran (Headunit Server): kartın simgesinin yanında bağlı ağ, bant etiketi ve sinyal çubukları; ana tuş tüm modlarda ikonlu hap şeklinde. (Bu patch'teki ayrı **WiFi tara** tuşunu 0003 kaldırır.) |
-| `0003-Headunit-Server-a-Connection-Method-and-on-the-phone.patch` | Ayarlar → Headunit Server (Otomatik) → **Bağlantı yöntemi**: Telefon AP / Ünite AP / Ortak ağ. **Telefon AP** seçiliyken: ünite WiFi'ye bağlı değilse telefon araması ağ taramaz, bekler; **WiFi ile bağlan** önce WiFi taraması yapar (WiFi kapalıysa paneli açar), 60 sn bağlantıyı bekler (İptal ana tuşun yerinde), bağlanınca telefonu arar; isteğe bağlı **Erişim Noktasını Otomatik Tara** (ana ekran açıkken hemen, 2 dk boyunca 35 sn'de bir, sonra dakikada bir). Ortak ağ ve Ünite AP'de hiçbir şey değişmez. 0002 ile birlikte upstream'e `feat/home-wifi-scan` dalından önerildi. |
+| `0002-Input-choose-which-key-groups-reach-Android-Auto.patch` | Ayarlar → Giriş → **Tuşları Android Auto'ya gönder**: OK / Seç, yön tuşları ve döner düğme, Geri, arama, sesli asistan ve diğer tuşlar için ayrı ayrı onay kutuları. Direksiyondaki OK'nin Android Auto'da bir şey seçmesini engeller. Upstream'e `feat/aa-key-groups` dalından önerilecek. |
 
-Taban: **4.1.0-beta1** (`BASE` dosyasındaki commit).
+Taban: upstream `main` (`BASE` dosyasındaki commit).
+
+Daha önce burada duran WiFi özellikleri (0002, 0003) orijinal projeye kabul edildi ([#1298](https://github.com/andreknieriem/open-headunit/pull/1298)); artık upstream'in kendi kodunda oldukları için patch olarak tutulmuyorlar.
 
 Bir özelliği istemiyorsanız ilgili `.patch` dosyasını silmeniz yeterli.
 
@@ -77,26 +78,10 @@ commit'ler patch'e girmez. Yeni bir özellik ayrı bir commit olarak eklenirse k
 - `.github/workflows/personal-signed-apk.yml`
 - `SIGNING.md`
 
-**0002 (WiFi durumu ve ana tuş görünümü)**
-- `main/HomeWifiStatus.kt`: yeni. WiFi durumunu okur, değişiklikleri dinler, tarama ister.
-- `main/HomeWifiStatusPolicy.kt`: yeni. Ne zaman ne gösterileceği; birim testi var.
-- `main/HomeFragment.kt`: tarama tuşunun bağlantı noktası.
-- `utils/HomeUiHelper.kt`: durum alanı ve tuşun gündüz/gece boyaması.
-- `res/layout/view_home_primary_card.xml`: durum alanı ve tarama tuşu.
-- `res/drawable/`: WiFi arama, tarama halkası, WiFi kapalı, bağlantı, sinyal çubukları, uyarı noktası ikonları.
-- `res/values/ids.xml`: sığdırma için etiket kimlikleri.
-- `res/values*/dimens.xml`: ekran boyutuna göre ölçüler.
-- `res/values*/strings.xml`: 25 dilde metinler.
-- `test/.../HomeWifiStatusLayoutTest.kt`: yeni. Gerçek ana ekranı 7 ekran boyutunda yerleştirip hiçbir şeyin kesilmediğini denetler.
+**0002 (Android Auto'ya gönderilen tuşlar)**
+- `input/AaKeyGroupPolicy.kt`: yeni. Tuşu gruba ayıran ve gönderilip gönderilmeyeceğine karar veren kural; birim testi var.
+- `connection/CommManager.kt`: atanmamış tuşlar için grup kontrolü.
+- `utils/Settings.kt`, `utils/SettingsBackupManager.kt`, `main/SettingsPendingCopy.kt`, `main/SettingsFragment.kt`: yeni ayar ve seçim penceresi.
+- `res/values*/strings.xml`: 26 dilde metinler.
+- `test/...`: `AaKeyGroupPolicyTest`, `AaKeyGroupsDialogTest` yeni.
 - `CHANGELOG.md`
-
-**0003 (Bağlantı yöntemi ve erişim noktası beklemesi)**
-- `connection/wifi/HeadunitServerNetwork.kt`: yeni. Ayarın seçenekleri ve "telefon araması WiFi'yi beklesin mi" kuralı; birim testi var.
-- `connection/wifi/NetworkDiscovery.kt`: Telefon AP seçiliyken WiFi yoksa ağ taramasını atlar.
-- `utils/Settings.kt`, `utils/SettingsBackupManager.kt`, `main/SettingsPendingCopy.kt`, `main/SettingsFragment.kt`: iki yeni ayar ve ayar ekranındaki satırları.
-- `main/HomeWifiStatus.kt`, `main/HomeWifiStatusPolicy.kt`, `main/HomeFragment.kt`: ana tuşun bekleme akışı ve otomatik tarama.
-- `utils/HomeUiHelper.kt`, `res/layout/view_home_primary_card.xml`: WiFi tara tuşu kaldırıldı; bekleme görünümü; dar ekranda ana tuş ikonsuz.
-- `utils/HotspotManager.kt`: `isApUp` artık dışarıdan da çağrılabilir.
-- `utils/LogExporter.kt`: günlük başlığında seçilen bağlantı yöntemi.
-- `res/values*/strings.xml`: 25 dilde metinler.
-- `test/...`: `HeadunitServerNetworkTest`, `HeadunitServerNetworkSettingRowTest` yeni; ana ekran testleri 26 dilde.

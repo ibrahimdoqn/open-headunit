@@ -1,0 +1,1191 @@
+From 963a4fa7c03e2135ffe04a6b9aea2948d3389663 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 21 Nov 2026 16:55:13 +0000
+Subject: [PATCH] Input: choose which key groups reach Android Auto
+
+A head unit's key handler often delivers presses that were never meant
+for the projection. On cars whose factory system keeps the steering
+wheel (an Audi MMI, for one), the wheel's OK still reaches this app and
+Android Auto selects something the driver never looked at. Bindings
+could not help: an unbound key goes on as itself, and the media setting
+covers next, previous and play/pause only.
+
+Settings > Input > Send Keys To Android Auto: a multi-choice of key
+groups, all ticked by default so nothing changes until a user unticks
+one: OK / Select, Arrows and rotary knob, Back, Call and hang up, Voice
+assistant, Keyboard and other keys.
+
+- Stored as the groups held back, so an unset preference, and any group
+  added later, sends everything.
+- Unbound keys only: a key bound in the keymap names its Android Auto key
+  on purpose and is always sent as bound; gestures never pass here.
+- Media keys stay with Send Media Buttons To Android Auto, volume with
+  Send Volume Buttons To The Phone; neither is affected. The media
+  setting's hint, which said the other keys always reach Android Auto,
+  now points to the new setting.
+- A held-back press is logged with its group.
+
+AaKeyGroupPolicy is pure and unit-tested; AaKeyGroupsDialogTest shows
+the choice in all 26 locales on a portrait phone and an 800x450 unit and
+checks no group's name is cut.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ CHANGELOG.md                                  |  1 +
+ .../openheadunit/connection/CommManager.kt    | 16 +++-
+ .../openheadunit/input/AaKeyGroupPolicy.kt    | 89 +++++++++++++++++++
+ .../openheadunit/main/SettingsFragment.kt     | 52 +++++++++++
+ .../openheadunit/main/SettingsPendingCopy.kt  |  4 +
+ .../andrerinas/openheadunit/utils/Settings.kt |  8 ++
+ .../utils/SettingsBackupManager.kt            |  2 +
+ app/src/main/res/values-ar/strings.xml        | 13 ++-
+ app/src/main/res/values-cs/strings.xml        | 13 ++-
+ app/src/main/res/values-de/strings.xml        | 13 ++-
+ app/src/main/res/values-es-rES/strings.xml    | 13 ++-
+ app/src/main/res/values-es/strings.xml        | 13 ++-
+ app/src/main/res/values-fr/strings.xml        | 13 ++-
+ app/src/main/res/values-hi/strings.xml        | 13 ++-
+ app/src/main/res/values-hu/strings.xml        | 13 ++-
+ app/src/main/res/values-in/strings.xml        | 13 ++-
+ app/src/main/res/values-it/strings.xml        | 13 ++-
+ app/src/main/res/values-ja/strings.xml        | 13 ++-
+ app/src/main/res/values-ka/strings.xml        | 13 ++-
+ app/src/main/res/values-ko/strings.xml        | 13 ++-
+ app/src/main/res/values-nl/strings.xml        | 13 ++-
+ app/src/main/res/values-pl/strings.xml        | 13 ++-
+ app/src/main/res/values-pt-rBR/strings.xml    | 13 ++-
+ app/src/main/res/values-pt-rPT/strings.xml    | 13 ++-
+ app/src/main/res/values-ro/strings.xml        | 13 ++-
+ app/src/main/res/values-ru/strings.xml        | 13 ++-
+ app/src/main/res/values-th/strings.xml        | 13 ++-
+ app/src/main/res/values-tr/strings.xml        | 13 ++-
+ app/src/main/res/values-uk/strings.xml        | 13 ++-
+ app/src/main/res/values-vi/strings.xml        | 13 ++-
+ app/src/main/res/values-zh-rCN/strings.xml    | 13 ++-
+ app/src/main/res/values-zh-rTW/strings.xml    | 13 ++-
+ app/src/main/res/values/strings.xml           | 13 ++-
+ .../input/AaKeyGroupPolicyTest.kt             | 82 +++++++++++++++++
+ .../main/AaKeyGroupsDialogTest.kt             | 78 ++++++++++++++++
+ 35 files changed, 642 insertions(+), 28 deletions(-)
+ create mode 100644 app/src/main/java/com/andrerinas/openheadunit/input/AaKeyGroupPolicy.kt
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/input/AaKeyGroupPolicyTest.kt
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/main/AaKeyGroupsDialogTest.kt
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 0a0b1751..7fc7600b 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -10,6 +10,7 @@
+ - Feat(home): move All Apps button to sidebar in launcher mode
+ - Display: reconnect in the remembered shape, and redraw instead of stretching when the screen turns, thanks to @tamer1an
+ - Feat(wifi): Headunit Server asks which network the phone and the unit share. On the phone's hotspot the search waits for the unit to join it, Connect over WiFi scans for the hotspot first, and the main card shows the WiFi network, band and signal; an optional automatic scan helps a slow unit join. The main button becomes a pill led by an icon
++- Feat(input): choose which key groups reach Android Auto (OK, arrows and rotary, Back, call, voice assistant, other), so a steering wheel that also drives the car's own system no longer selects things in Android Auto
+ 
+ ### 4.0.0
+ - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/CommManager.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/CommManager.kt
+index 8656d868..399eb5b8 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/connection/CommManager.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/CommManager.kt
+@@ -9,6 +9,7 @@ import com.andrerinas.openheadunit.aap.DimState
+ import com.andrerinas.openheadunit.aap.AaPresentationSession
+ import com.andrerinas.openheadunit.aap.AapTransport
+ import com.andrerinas.openheadunit.aap.NarrowBandProfilePolicy
++import com.andrerinas.openheadunit.input.AaKeyGroupPolicy
+ import com.andrerinas.openheadunit.input.InputAction
+ import com.andrerinas.openheadunit.input.InputActionCodec
+ import com.andrerinas.openheadunit.input.KeyBindingPolicy
+@@ -1360,6 +1361,17 @@ class CommManager(
+                     AppLog.v("CommManager: Ignoring unmapped proprietary key $keyCode")
+                     return
+                 }
++                // 3. Key groups the user holds back, such as a steering wheel's OK that drives the
++                // car's own system. Unbound keys only: a binding names its Android Auto key on
++                // purpose. See AaKeyGroupPolicy.
++                val heldBack = settings.aaKeyGroupsHeldBack
++                if (!AaKeyGroupPolicy.shouldForward(keyCode, heldBack)) {
++                    if (isPress) {
++                        AppLog.i("CommManager: Not sending key $keyCode to Android Auto: " +
++                            "${AaKeyGroupPolicy.groupOf(keyCode)?.id} keys are held back (src=$source)")
++                    }
++                    return
++                }
+                 keyCode
+             }
+         }
+@@ -1384,7 +1396,7 @@ class CommManager(
+ 
+         val isMedia = isMediaKey(logicalCode)
+ 
+-        // 3. Routing: a media button the head unit's own Bluetooth side is already acting on must
++        // 4. Routing: a media button the head unit's own Bluetooth side is already acting on must
+         // not be sent again, or one press performs the action twice. See MediaKeyRoutingPolicy.
+         // Only media keys can be held back, so nothing else pays for the Bluetooth probe.
+         if (isMedia) {
+@@ -1396,7 +1408,7 @@ class CommManager(
+             }
+         }
+ 
+-        // 4. De-duplication: one press reaches us from several delivery paths at once.
++        // 5. De-duplication: one press reaches us from several delivery paths at once.
+         val state = keyStates[logicalCode] ?: KeyDebouncePolicy.KeyState()
+         val decision = KeyDebouncePolicy.decide(
+             state = state,
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/input/AaKeyGroupPolicy.kt b/app/src/main/java/com/andrerinas/openheadunit/input/AaKeyGroupPolicy.kt
+new file mode 100644
+index 00000000..219ac0a2
+--- /dev/null
++++ b/app/src/main/java/com/andrerinas/openheadunit/input/AaKeyGroupPolicy.kt
+@@ -0,0 +1,89 @@
++package com.andrerinas.openheadunit.input
++
++import android.view.KeyEvent
++
++/**
++ * Which of this unit's keys go to Android Auto, by group, for the keys no binding speaks for.
++ *
++ * A head unit's key handler often delivers presses that were never meant for the projection. On
++ * cars whose factory system stays in place, the steering wheel drives that system, and its OK or
++ * Back still reaches this app: Android Auto then selects or leaves something the driver never
++ * looked at. Bindings cannot help there, since an unbound key goes on as itself; this lets a group
++ * be held back instead.
++ *
++ * Media buttons are not a group here: [MediaKeyRoutingPolicy] owns them, with an Automatic mode
++ * this one has no use for. Volume is the volume setting's. Neither is affected by anything here.
++ *
++ * A binding always wins. A key bound in the keymap was chosen for Android Auto by name, so the
++ * caller asks this only for unbound keys; gestures bound to an Android Auto key never come here
++ * either.
++ *
++ * Pure and unit-tested; the send lives in `CommManager`.
++ */
++object AaKeyGroupPolicy {
++
++    /**
++     * A group of keys, by the id it is stored under. The ids are stored: never reuse or rename one.
++     * What is stored is the set of groups held back, so a group added later starts out sent.
++     */
++    enum class Group(val id: String) {
++        SELECT("select"),
++        DIRECTION("direction"),
++        BACK("back"),
++        PHONE("phone"),
++        ASSISTANT("assistant"),
++        OTHER("other");
++
++        companion object {
++            fun fromId(id: String): Group? = values().firstOrNull { it.id == id }
++        }
++    }
++
++    private val select = setOf(
++        KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
++    )
++
++    /** The D-pad, and the rotary controller's turns, which reach Android Auto as SOFT_LEFT/RIGHT. */
++    private val direction = setOf(
++        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT,
++        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_SOFT_LEFT, KeyEvent.KEYCODE_SOFT_RIGHT,
++    )
++
++    private val back = setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE)
++
++    private val phone = setOf(KeyEvent.KEYCODE_CALL, KeyEvent.KEYCODE_ENDCALL, KeyEvent.KEYCODE_HEADSETHOOK)
++
++    private val assistant = setOf(
++        KeyEvent.KEYCODE_SEARCH, KeyEvent.KEYCODE_VOICE_ASSIST, KeyEvent.KEYCODE_ASSIST,
++    )
++
++    /** The keys other settings own, so this one never touches them. */
++    private val ownedElsewhere = setOf(
++        KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
++        KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP,
++        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_MEDIA_REWIND,
++        KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE,
++    )
++
++    /** The group [keyCode] belongs to, or null for a key another setting owns. */
++    fun groupOf(keyCode: Int): Group? = when (keyCode) {
++        in ownedElsewhere -> null
++        in select -> Group.SELECT
++        in direction -> Group.DIRECTION
++        in back -> Group.BACK
++        in phone -> Group.PHONE
++        in assistant -> Group.ASSISTANT
++        else -> Group.OTHER
++    }
++
++    /** Whether an unbound key goes to Android Auto, given the groups the user holds back. */
++    fun shouldForward(keyCode: Int, heldBack: Set<Group>): Boolean {
++        val group = groupOf(keyCode) ?: return true
++        return group !in heldBack
++    }
++
++    /** The stored form: the ids of the groups held back. Unknown ids are dropped, never guessed at. */
++    fun decode(stored: Set<String>?): Set<Group> = stored.orEmpty().mapNotNull { Group.fromId(it) }.toSet()
++
++    fun encode(heldBack: Set<Group>): Set<String> = heldBack.map { it.id }.toSet()
++}
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
+index a3c5c83d..588f10d9 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsFragment.kt
+@@ -45,6 +45,7 @@ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.esp32.Esp32Rel
+ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.CredentialField
+ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeAaWakeDamagePolicy
+ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.zbt.ZbtProbe
++import com.andrerinas.openheadunit.input.AaKeyGroupPolicy
+ import com.andrerinas.openheadunit.input.MediaKeyRoutingPolicy
+ import com.andrerinas.openheadunit.location.SpeedVolumePolicy
+ import com.andrerinas.openheadunit.connection.wifi.direct.ObservedP2pCredentials
+@@ -209,6 +210,7 @@ class SettingsFragment : Fragment() {
+     private var pendingMicInputSource by pending::micInputSource
+     private var pendingEnableRotary by pending::enableRotary
+     private var pendingMediaKeyRouting by pending::mediaKeyRouting
++    private var pendingAaKeyGroupsHeldBack by pending::aaKeyGroupsHeldBack
+     private var pendingVolumeKeysToPhone by pending::volumeKeysToPhone
+     private var pendingSpeedVolumeMode by pending::speedVolumeMode
+     private var pendingAudioLatencyMultiplier by pending::audioLatencyMultiplier
+@@ -671,6 +673,7 @@ class SettingsFragment : Fragment() {
+         pendingMicInputSource?.let { if (it != settings.micInputSource) settings.micInputSource = it }
+         pendingEnableRotary?.let { if (it != settings.enableRotary) settings.enableRotary = it }
+         pendingMediaKeyRouting?.let { if (it != settings.mediaKeyRouting) settings.mediaKeyRouting = it }
++        pendingAaKeyGroupsHeldBack?.let { if (it != settings.aaKeyGroupsHeldBack) settings.aaKeyGroupsHeldBack = it }
+         pendingVolumeKeysToPhone?.let { if (it != settings.volumeKeysToPhone) settings.volumeKeysToPhone = it }
+         pendingSpeedVolumeMode?.let { if (it != settings.speedVolumeMode) settings.speedVolumeMode = it }
+         pendingAudioLatencyMultiplier?.let { if (it != settings.audioLatencyMultiplier) settings.audioLatencyMultiplier = it }
+@@ -2341,6 +2344,19 @@ class SettingsFragment : Fragment() {
+             ))
+         }
+ 
++        // Every other key, by group. A car whose factory system keeps the steering wheel still sends
++        // its OK and Back here, and Android Auto acts on them; holding a group back stops that.
++        // Bound keys are not affected, see AaKeyGroupPolicy.
++        items.add(SettingItem.SettingEntry(
++            stableId = "aaKeyGroups",
++            nameResId = R.string.aa_key_groups,
++            value = aaKeyGroupsSummary(pendingAaKeyGroupsHeldBack ?: settings.aaKeyGroupsHeldBack),
++            helpResId = R.string.aa_key_groups_help,
++            searchKeywords = kw(R.string.aa_key_group_select, R.string.aa_key_group_direction, R.string.aa_key_group_back,
++                R.string.aa_key_group_phone, R.string.aa_key_group_assistant, R.string.aa_key_group_other),
++            onClick = { showAaKeyGroupsDialog() }
++        ))
++
+         // For a phone that plays its own audio: with Audio Sink on, this head unit plays the sound
+         // and its own volume is the one that matters, so this stays a choice and is off by default.
+         items.add(SettingItem.ToggleSettingEntry(
+@@ -3310,6 +3326,42 @@ class SettingsFragment : Fragment() {
+         return m.widthPixels to m.heightPixels
+     }
+ 
++    private fun aaKeyGroupLabel(group: AaKeyGroupPolicy.Group): Int = when (group) {
++        AaKeyGroupPolicy.Group.SELECT -> R.string.aa_key_group_select
++        AaKeyGroupPolicy.Group.DIRECTION -> R.string.aa_key_group_direction
++        AaKeyGroupPolicy.Group.BACK -> R.string.aa_key_group_back
++        AaKeyGroupPolicy.Group.PHONE -> R.string.aa_key_group_phone
++        AaKeyGroupPolicy.Group.ASSISTANT -> R.string.aa_key_group_assistant
++        AaKeyGroupPolicy.Group.OTHER -> R.string.aa_key_group_other
++    }
++
++    /** "All", "None", or the groups held back, in the dialog's order. */
++    private fun aaKeyGroupsSummary(heldBack: Set<AaKeyGroupPolicy.Group>): String = when {
++        heldBack.isEmpty() -> getString(R.string.aa_key_groups_all)
++        heldBack.size == AaKeyGroupPolicy.Group.values().size -> getString(R.string.aa_key_groups_none)
++        else -> getString(R.string.aa_key_groups_except, AaKeyGroupPolicy.Group.values()
++            .filter { it in heldBack }.joinToString(", ") { getString(aaKeyGroupLabel(it)) })
++    }
++
++    /** Ticked groups are sent; saved with the rest of the screen, like every other choice here. */
++    private fun showAaKeyGroupsDialog() {
++        val groups = AaKeyGroupPolicy.Group.values()
++        val heldBack = pendingAaKeyGroupsHeldBack ?: settings.aaKeyGroupsHeldBack
++        val labels = groups.map { getString(aaKeyGroupLabel(it)) }.toTypedArray()
++        val checked = BooleanArray(groups.size) { groups[it] !in heldBack }
++        MaterialAlertDialogBuilder(requireContext(), R.style.DarkAlertDialog)
++            .setTitle(R.string.aa_key_groups)
++            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
++            .setPositiveButton(android.R.string.ok) { dialog, _ ->
++                pendingAaKeyGroupsHeldBack = groups.filterIndexed { i, _ -> !checked[i] }.toSet()
++                checkChanges()
++                updateSettingsList()
++                dialog.dismiss()
++            }
++            .setNegativeButton(android.R.string.cancel, null)
++            .show()
++    }
++
+     private fun showConnectionModeDialog() {
+         val order = listOf(
+             Settings.ConnectionMode.USB,
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
+index 7309b160..8d373ea0 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/SettingsPendingCopy.kt
+@@ -8,6 +8,7 @@ import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
+ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeDriverSelectionPolicy
+ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeStrategy
+ import com.andrerinas.openheadunit.decoder.audio.PlaybackFocusPolicy
++import com.andrerinas.openheadunit.input.AaKeyGroupPolicy
+ import com.andrerinas.openheadunit.input.MediaKeyRoutingPolicy
+ import com.andrerinas.openheadunit.location.SpeedVolumePolicy
+ import com.andrerinas.openheadunit.utils.Settings
+@@ -43,6 +44,7 @@ class SettingsPendingCopy {
+     var micInputSource: Int? = null
+     var enableRotary: Boolean? = null
+     var mediaKeyRouting: MediaKeyRoutingPolicy.Mode? = null
++    var aaKeyGroupsHeldBack: Set<AaKeyGroupPolicy.Group>? = null
+     var volumeKeysToPhone: Boolean? = null
+     var speedVolumeMode: SpeedVolumePolicy.Mode? = null
+     var audioLatencyMultiplier: Int? = null
+@@ -142,6 +144,7 @@ class SettingsPendingCopy {
+         micInputSource = settings.micInputSource
+         enableRotary = settings.enableRotary
+         mediaKeyRouting = settings.mediaKeyRouting
++        aaKeyGroupsHeldBack = settings.aaKeyGroupsHeldBack
+         volumeKeysToPhone = settings.volumeKeysToPhone
+         speedVolumeMode = settings.speedVolumeMode
+         audioLatencyMultiplier = settings.audioLatencyMultiplier
+@@ -242,6 +245,7 @@ class SettingsPendingCopy {
+         micInputSource != settings.micInputSource ||
+         enableRotary != settings.enableRotary ||
+         mediaKeyRouting != settings.mediaKeyRouting ||
++        aaKeyGroupsHeldBack != settings.aaKeyGroupsHeldBack ||
+         volumeKeysToPhone != settings.volumeKeysToPhone ||
+         speedVolumeMode != settings.speedVolumeMode ||
+         audioLatencyMultiplier != settings.audioLatencyMultiplier ||
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt b/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
+index 2227c487..c71e32b0 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/utils/Settings.kt
+@@ -23,6 +23,7 @@ import com.andrerinas.openheadunit.main.FavoriteTarget
+ import com.andrerinas.openheadunit.main.HomePagesPolicy
+ import com.andrerinas.openheadunit.main.HomeSurfaceOpacityPolicy
+ import com.andrerinas.openheadunit.main.HomeWidgetsPolicy
++import com.andrerinas.openheadunit.input.AaKeyGroupPolicy
+ import com.andrerinas.openheadunit.input.MediaKeyRoutingPolicy
+ import com.andrerinas.openheadunit.location.SpeedVolumePolicy
+ import com.andrerinas.openheadunit.view.PerformanceOverlayField
+@@ -1424,6 +1425,13 @@ class Settings(private val context: Context) {
+         )
+         set(value) { prefs.edit().putInt("media-key-routing", value.value).apply() }
+ 
++    // The key groups held back from Android Auto when no binding speaks for the key, such as a
++    // steering wheel's OK that drives the car's own system. See AaKeyGroupPolicy. Stored as the
++    // groups held back, so an unset preference, and any group added later, sends everything.
++    var aaKeyGroupsHeldBack: Set<AaKeyGroupPolicy.Group>
++        get() = AaKeyGroupPolicy.decode(prefs.getStringSet("aa-key-groups-held-back", null))
++        set(value) { prefs.edit().putStringSet("aa-key-groups-held-back", AaKeyGroupPolicy.encode(value)).apply() }
++
+     // Whether the hardware volume buttons go to the phone through Android Auto instead of changing
+     // this head unit's own volume. For a phone that keeps its audio (Audio Sink off, or playing to
+     // the car over Bluetooth), where the local volume controls nothing Android Auto plays. Off is
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt b/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
+index 3505bd1d..392421c3 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/utils/SettingsBackupManager.kt
+@@ -207,6 +207,8 @@ object SettingsBackupManager {
+         // Same reasoning: read through MediaKeyRoutingPolicy.Mode.fromInt, which falls back to
+         // ALWAYS for anything out of range.
+         "media-key-routing" to ValueType.INT,
++        // Group ids, read through AaKeyGroupPolicy.decode, which drops any it does not know.
++        "aa-key-groups-held-back" to ValueType.STRING_SET,
+         "volume-keys-to-phone" to ValueType.BOOLEAN,
+         // Enum-backed like playback-focus-mode: read through SpeedVolumePolicy.Mode.fromInt, which
+         // falls back to OFF for anything out of range.
+diff --git a/app/src/main/res/values-ar/strings.xml b/app/src/main/res/values-ar/strings.xml
+index e8d228b6..43f62f6b 100644
+--- a/app/src/main/res/values-ar/strings.xml
++++ b/app/src/main/res/values-ar/strings.xml
+@@ -1160,7 +1160,18 @@
+     <string name="media_key_routing_auto">تلقائي</string>
+     <string name="media_key_routing_never">أبدًا</string>
+     <string name="media_key_routing_help">دائمًا: يُرسل زر التالي والسابق والتشغيل/الإيقاف المؤقت دائمًا إلى Android Auto. استخدم هذا الخيار ما لم تؤدِّ ضغطة واحدة إلى تخطي مقطعين.\n\nتلقائي: يتوقف الإرسال أثناء وجود اتصال وسائط عبر Bluetooth بين وحدة الرأس والهاتف، لأن هذا الاتصال ينفّذ الإجراء بنفسه. اختر هذا الخيار إذا كانت ضغطة واحدة تتخطى مقطعين وكان هاتفك مقترنًا بوحدة الرأس هذه.\n\nأبدًا: لا يُرسل الأزرار أبدًا، وتتولاها وصلة Bluetooth. اختر هذا الخيار إذا كانت ضغطة واحدة تتخطى مقطعين وكان هاتفك مقترنًا بنظام السيارة نفسه لا بوحدة الرأس هذه، فالخيار التلقائي لا يستطيع اكتشاف هذا الاتصال.</string>
+-    <string name="media_key_routing_hint_common">يقتصر التأثير على أزرار الوسائط فقط. أما مفاتيح التحكم الدوّارة وأزرار الاتجاهات وزرا الرجوع والإدخال فتصل دائمًا إلى Android Auto.</string>
++    <string name="media_key_routing_hint_common">يقتصر التأثير على أزرار الوسائط فقط. لباقي الأزرار إعدادها الخاص: إرسال الأزرار إلى Android Auto.</string>
++    <string name="aa_key_groups">إرسال الأزرار إلى Android Auto</string>
++    <string name="aa_key_groups_all">الكل</string>
++    <string name="aa_key_groups_none">لا شيء</string>
++    <string name="aa_key_groups_except">الكل عدا %1$s</string>
++    <string name="aa_key_groups_help">أي أزرار هذه الوحدة تصل إلى Android Auto. ألغِ تحديد مجموعة كي لا تصل أزرارها إلى Android Auto، مثلاً عندما يتحكم زر OK أو الرجوع على المقود بنظام السيارة الأصلي أيضًا فيختار Android Auto أشياء لم تقصدها.\n\nلأزرار الوسائط إعدادها الخاص في الأعلى، ولأزرار الصوت الإعداد الذي في الأسفل. الزر المعيَّن في تعيين الأزرار يُرسل دائمًا كما عُيِّن.</string>
++    <string name="aa_key_group_select">OK / تحديد</string>
++    <string name="aa_key_group_direction">الأسهم والمقبض الدوّار</string>
++    <string name="aa_key_group_back">رجوع</string>
++    <string name="aa_key_group_phone">الاتصال وإنهاء المكالمة</string>
++    <string name="aa_key_group_assistant">المساعد الصوتي</string>
++    <string name="aa_key_group_other">لوحة المفاتيح وأزرار أخرى</string>
+     <string name="volume_keys_to_phone">إرسال أزرار الصوت إلى الهاتف</string>
+     <string name="volume_keys_to_phone_summary">تغيّر أزرار الصوت صوت الهاتف بدلًا من صوت هذه الوحدة.</string>
+     <string name="volume_keys_to_phone_help">يرسل أزرار الصوت في هذه الوحدة إلى الهاتف عبر Android Auto بدلًا من تغيير مستوى الصوت هنا. استخدمه عندما يشغّل الهاتف الصوت بنفسه: عند إيقاف «مخرج الصوت»، أو عند اتصال الهاتف ببلوتوث السيارة.\n\nيعمل أثناء ظهور Android Auto على الشاشة، وفقط إذا كان Android Auto على الهاتف يستجيب لمفاتيح الصوت.</string>
+diff --git a/app/src/main/res/values-cs/strings.xml b/app/src/main/res/values-cs/strings.xml
+index d23e0d44..5132ae69 100644
+--- a/app/src/main/res/values-cs/strings.xml
++++ b/app/src/main/res/values-cs/strings.xml
+@@ -1160,7 +1160,18 @@
+     <string name="media_key_routing_auto">Automaticky</string>
+     <string name="media_key_routing_never">Nikdy</string>
+     <string name="media_key_routing_help">Vždy: Tlačítka Další, Předchozí a Přehrát/Pozastavit se do Android Auto posílají vždy. Použijte, pokud jedno stisknutí nepřeskočí dvě skladby.\n\nAutomaticky: Odesílání se zastaví, když má toto autorádio s telefonem mediální připojení přes Bluetooth, protože tuto akci provádí již toto připojení. Zvolte, pokud jedno stisknutí přeskočí dvě skladby a telefon je spárován s tímto autorádiem.\n\nNikdy: Tlačítka se neodesílají a ponechají se Bluetooth. Zvolte, pokud jedno stisknutí přeskočí dvě skladby a telefon je spárován s vlastním systémem vozu, ne s tímto autorádiem. Režim Automaticky takové připojení nezjistí.</string>
+-    <string name="media_key_routing_hint_common">Ovlivněna jsou jen mediální tlačítka. Otočné ovladače, D-pad, Zpět a Enter se do Android Auto dostanou vždy.</string>
++    <string name="media_key_routing_hint_common">Ovlivněna jsou jen mediální tlačítka. Ostatní klávesy mají vlastní nastavení: Odesílat klávesy do Android Auto.</string>
++    <string name="aa_key_groups">Odesílat klávesy do Android Auto</string>
++    <string name="aa_key_groups_all">Vše</string>
++    <string name="aa_key_groups_none">Nic</string>
++    <string name="aa_key_groups_except">Vše kromě: %1$s</string>
++    <string name="aa_key_groups_help">Které klávesy této jednotky se dostanou do Android Auto. Zrušte zaškrtnutí skupiny, aby se její klávesy do Android Auto nedostaly, například když OK nebo Zpět na volantu ovládá i původní systém auta a Android Auto nechtěně něco vybírá.\n\nMediální tlačítka mají vlastní nastavení výše, tlačítka hlasitosti níže. Klávesa přiřazená v mapování kláves se vždy odešle podle přiřazení.</string>
++    <string name="aa_key_group_select">OK / Vybrat</string>
++    <string name="aa_key_group_direction">Šipky a otočný ovladač</string>
++    <string name="aa_key_group_back">Zpět</string>
++    <string name="aa_key_group_phone">Volat a zavěsit</string>
++    <string name="aa_key_group_assistant">Hlasový asistent</string>
++    <string name="aa_key_group_other">Klávesnice a další klávesy</string>
+     <string name="volume_keys_to_phone">Odesílat tlačítka hlasitosti do telefonu</string>
+     <string name="volume_keys_to_phone_summary">Tlačítka hlasitosti mění hlasitost telefonu, ne této jednotky.</string>
+     <string name="volume_keys_to_phone_help">Posílá tlačítka hlasitosti této jednotky do telefonu přes Android Auto, místo aby měnila hlasitost zde. Použijte, když zvuk přehrává sám telefon: Zvukový výstup (Sink) je vypnutý nebo je telefon připojen k Bluetooth vozu.\n\nFunguje, když je Android Auto na obrazovce, a jen pokud Android Auto v telefonu reaguje na tlačítka hlasitosti.</string>
+diff --git a/app/src/main/res/values-de/strings.xml b/app/src/main/res/values-de/strings.xml
+index fc21e97e..3d2639ed 100644
+--- a/app/src/main/res/values-de/strings.xml
++++ b/app/src/main/res/values-de/strings.xml
+@@ -1147,7 +1147,18 @@
+     <string name="media_key_routing_auto">Automatisch</string>
+     <string name="media_key_routing_never">Nie</string>
+     <string name="media_key_routing_help">Immer: Weiter, Zurück und Wiedergabe/Pause werden immer an Android Auto gesendet. Verwende diese Option, es sei denn, ein Tastendruck überspringt zwei Titel.\n\nAutomatisch: Stoppt das Senden, solange die Headunit eine Bluetooth-Medienverbindung zum Smartphone hat, da diese Verbindung die Aktion bereits ausführt. Wähle diese Option, wenn ein Tastendruck zwei Titel überspringt und dein Smartphone mit dieser Headunit gekoppelt ist.\n\nNie: Sendet sie nie und überlässt die Tasten Bluetooth. Wähle diese Option, wenn ein Tastendruck zwei Titel überspringt und dein Smartphone mit dem Fahrzeugsystem statt mit dieser Headunit gekoppelt ist. Automatisch kann diese Verbindung nicht erkennen.</string>
+-    <string name="media_key_routing_hint_common">Betrifft nur die Medientasten. Drehregler, Steuerkreuz, Zurück und Enter erreichen Android Auto immer.</string>
++    <string name="media_key_routing_hint_common">Betrifft nur die Medientasten. Die anderen Tasten haben ihre eigene Einstellung: Tasten an Android Auto senden.</string>
++    <string name="aa_key_groups">Tasten an Android Auto senden</string>
++    <string name="aa_key_groups_all">Alle</string>
++    <string name="aa_key_groups_none">Keine</string>
++    <string name="aa_key_groups_except">Alle außer %1$s</string>
++    <string name="aa_key_groups_help">Welche Tasten dieses Geräts Android Auto erreichen. Entferne den Haken bei einer Gruppe, damit ihre Tasten nicht an Android Auto gehen, zum Beispiel wenn OK oder Zurück am Lenkrad auch das eigene System des Autos bedient und Android Auto ungewollt etwas auswählt.\n\nMedientasten haben oben ihre eigene Einstellung, Lautstärketasten unten. Eine in der Tastenbelegung zugewiesene Taste wird immer wie zugewiesen gesendet.</string>
++    <string name="aa_key_group_select">OK / Auswählen</string>
++    <string name="aa_key_group_direction">Pfeile und Drehregler</string>
++    <string name="aa_key_group_back">Zurück</string>
++    <string name="aa_key_group_phone">Anrufen und Auflegen</string>
++    <string name="aa_key_group_assistant">Sprachassistent</string>
++    <string name="aa_key_group_other">Tastatur und andere Tasten</string>
+     <string name="volume_keys_to_phone">Lautstärketasten an das Smartphone senden</string>
+     <string name="volume_keys_to_phone_summary">Lautstärketasten ändern die Lautstärke des Smartphones, nicht dieses Geräts.</string>
+     <string name="volume_keys_to_phone_help">Sendet die Lautstärketasten dieses Geräts über Android Auto an das Smartphone, statt die Lautstärke hier zu ändern. Verwende das, wenn das Smartphone den Ton selbst abspielt: Audio-Ausgabe aus oder das Smartphone mit dem Bluetooth des Autos verbunden.\n\nFunktioniert, solange Android Auto auf dem Bildschirm ist, und nur, wenn Android Auto auf dem Smartphone auf Lautstärketasten reagiert.</string>
+diff --git a/app/src/main/res/values-es-rES/strings.xml b/app/src/main/res/values-es-rES/strings.xml
+index 34b57fe0..168689a2 100644
+--- a/app/src/main/res/values-es-rES/strings.xml
++++ b/app/src/main/res/values-es-rES/strings.xml
+@@ -1173,7 +1173,18 @@
+     <string name="media_key_routing_auto">Automático</string>
+     <string name="media_key_routing_never">Nunca</string>
+     <string name="media_key_routing_help">Siempre: Siguiente, anterior y reproducir/pausar se envían siempre a Android Auto. Usa esta opción salvo que una pulsación salte dos canciones.\n\nAutomático: Deja de enviarlos mientras esta unidad tenga una conexión multimedia Bluetooth con el móvil, porque esa conexión ya realiza la acción. Elige esta opción si una pulsación salta dos canciones y tu móvil está emparejado con esta unidad.\n\nNunca: No los envía nunca y deja los botones al Bluetooth. Elige esta opción si una pulsación salta dos canciones y tu móvil está emparejado con el sistema del propio coche y no con esta unidad: Automático no puede detectar esa conexión.</string>
+-    <string name="media_key_routing_hint_common">Solo afecta a los botones multimedia. Los mandos giratorios, el D-pad, Atrás e Intro llegan siempre a Android Auto.</string>
++    <string name="media_key_routing_hint_common">Solo afecta a los botones multimedia. Las demás teclas tienen su propio ajuste: Enviar teclas a Android Auto.</string>
++    <string name="aa_key_groups">Enviar teclas a Android Auto</string>
++    <string name="aa_key_groups_all">Todas</string>
++    <string name="aa_key_groups_none">Ninguna</string>
++    <string name="aa_key_groups_except">Todas excepto %1$s</string>
++    <string name="aa_key_groups_help">Qué teclas de esta unidad llegan a Android Auto. Desmarca un grupo para que sus teclas no lleguen a Android Auto, por ejemplo cuando el OK o el Atrás del volante también manejan el sistema original del coche y Android Auto selecciona cosas sin querer.\n\nLos botones multimedia tienen su propio ajuste arriba y los de volumen, el de abajo. Una tecla asignada en la asignación de teclas siempre se envía tal como se asignó.</string>
++    <string name="aa_key_group_select">OK / Seleccionar</string>
++    <string name="aa_key_group_direction">Flechas y mando giratorio</string>
++    <string name="aa_key_group_back">Atrás</string>
++    <string name="aa_key_group_phone">Llamar y colgar</string>
++    <string name="aa_key_group_assistant">Asistente de voz</string>
++    <string name="aa_key_group_other">Teclado y otras teclas</string>
+     <string name="volume_keys_to_phone">Enviar botones de volumen al móvil</string>
+     <string name="volume_keys_to_phone_summary">Los botones de volumen cambian el volumen del móvil, no el de esta unidad.</string>
+     <string name="volume_keys_to_phone_help">Envía los botones de volumen de esta unidad al móvil a través de Android Auto en lugar de cambiar el volumen aquí. Úsalo cuando el móvil reproduzca el sonido por sí mismo: Salida de audio desactivada, o el móvil conectado al Bluetooth del coche.\n\nFunciona mientras Android Auto está en pantalla, y solo si Android Auto en el móvil responde a las teclas de volumen.</string>
+diff --git a/app/src/main/res/values-es/strings.xml b/app/src/main/res/values-es/strings.xml
+index 8e56a47c..cc65b9a9 100644
+--- a/app/src/main/res/values-es/strings.xml
++++ b/app/src/main/res/values-es/strings.xml
+@@ -1168,7 +1168,18 @@
+     <string name="media_key_routing_auto">Automático</string>
+     <string name="media_key_routing_never">Nunca</string>
+     <string name="media_key_routing_help">Siempre: Siguiente, anterior y reproducir/pausa se envían siempre a Android Auto. Usa esta opción, salvo que al presionar una vez se salten dos canciones.\n\nAutomático: Deja de enviarlos mientras esta unidad central tenga una conexión de medios Bluetooth con el teléfono, porque esa conexión ya ejecuta la acción. Elige esta opción si al presionar una vez se saltan dos canciones y tu teléfono está vinculado a esta unidad central.\n\nNunca: Nunca los envía y deja los botones a cargo de Bluetooth. Elige esta opción si al presionar una vez se saltan dos canciones y tu teléfono está vinculado al sistema propio del auto y no a esta unidad central. El modo Automático no puede detectar esa conexión.</string>
+-    <string name="media_key_routing_hint_common">Solo afecta a los botones multimedia. Los controles giratorios, el D-pad, Atrás y Enter siempre llegan a Android Auto.</string>
++    <string name="media_key_routing_hint_common">Solo afecta a los botones multimedia. Las demás teclas tienen su propio ajuste: Enviar teclas a Android Auto.</string>
++    <string name="aa_key_groups">Enviar teclas a Android Auto</string>
++    <string name="aa_key_groups_all">Todas</string>
++    <string name="aa_key_groups_none">Ninguna</string>
++    <string name="aa_key_groups_except">Todas excepto %1$s</string>
++    <string name="aa_key_groups_help">Qué teclas de esta unidad llegan a Android Auto. Desmarca un grupo para que sus teclas no lleguen a Android Auto, por ejemplo cuando el OK o el Atrás del volante también manejan el sistema original del coche y Android Auto selecciona cosas sin querer.\n\nLos botones multimedia tienen su propio ajuste arriba y los de volumen, el de abajo. Una tecla asignada en la asignación de teclas siempre se envía tal como se asignó.</string>
++    <string name="aa_key_group_select">OK / Seleccionar</string>
++    <string name="aa_key_group_direction">Flechas y mando giratorio</string>
++    <string name="aa_key_group_back">Atrás</string>
++    <string name="aa_key_group_phone">Llamar y colgar</string>
++    <string name="aa_key_group_assistant">Asistente de voz</string>
++    <string name="aa_key_group_other">Teclado y otras teclas</string>
+     <string name="volume_keys_to_phone">Enviar botones de volumen al teléfono</string>
+     <string name="volume_keys_to_phone_summary">Los botones de volumen cambian el volumen del teléfono, no el de esta unidad.</string>
+     <string name="volume_keys_to_phone_help">Envía los botones de volumen de esta unidad al teléfono a través de Android Auto en lugar de cambiar el volumen aquí. Úsalo cuando el teléfono reproduce el sonido por sí mismo: Receptor de audio desactivado, o el teléfono conectado al Bluetooth del auto.\n\nFunciona mientras Android Auto está en pantalla, y solo si Android Auto en el teléfono responde a las teclas de volumen.</string>
+diff --git a/app/src/main/res/values-fr/strings.xml b/app/src/main/res/values-fr/strings.xml
+index 2cc6c221..e5f1ef1c 100644
+--- a/app/src/main/res/values-fr/strings.xml
++++ b/app/src/main/res/values-fr/strings.xml
+@@ -637,7 +637,18 @@
+     <string name="media_key_routing_auto">Automatique</string>
+     <string name="media_key_routing_never">Jamais</string>
+     <string name="media_key_routing_help">Toujours: Suivant, précédent et lecture/pause sont toujours envoyés à Android Auto. Choisissez ce mode, sauf si un seul appui saute deux pistes.\n\nAutomatique: Cesse de les envoyer tant que cet autoradio a une connexion multimédia Bluetooth avec le téléphone, car cette connexion exécute déjà l\'action. Choisissez ce mode si un seul appui saute deux pistes et que votre téléphone est associé à cet autoradio.\n\nJamais: Ne les envoie jamais et laisse les boutons au Bluetooth. Choisissez ce mode si un seul appui saute deux pistes et que votre téléphone est associé au système propre de la voiture plutôt qu\'à cet autoradio. Le mode Automatique ne peut pas détecter cette connexion.</string>
+-    <string name="media_key_routing_hint_common">Seuls les boutons multimédia sont affectés. Les contrôleurs rotatifs, la croix directionnelle, Retour et Entrée atteignent toujours Android Auto.</string>
++    <string name="media_key_routing_hint_common">Seuls les boutons multimédia sont affectés. Les autres touches ont leur propre réglage : Envoyer les touches à Android Auto.</string>
++    <string name="aa_key_groups">Envoyer les touches à Android Auto</string>
++    <string name="aa_key_groups_all">Toutes</string>
++    <string name="aa_key_groups_none">Aucune</string>
++    <string name="aa_key_groups_except">Toutes sauf %1$s</string>
++    <string name="aa_key_groups_help">Quelles touches de cette unité atteignent Android Auto. Décochez un groupe pour que ses touches n’aillent pas à Android Auto, par exemple quand OK ou Retour au volant pilote aussi le système d’origine de la voiture et qu’Android Auto sélectionne des choses sans le vouloir.\n\nLes boutons multimédia ont leur propre réglage au-dessus, et les boutons de volume celui du dessous. Une touche attribuée dans le mappage des touches est toujours envoyée comme attribuée.</string>
++    <string name="aa_key_group_select">OK / Sélection</string>
++    <string name="aa_key_group_direction">Flèches et molette</string>
++    <string name="aa_key_group_back">Retour</string>
++    <string name="aa_key_group_phone">Appeler et raccrocher</string>
++    <string name="aa_key_group_assistant">Assistant vocal</string>
++    <string name="aa_key_group_other">Clavier et autres touches</string>
+     <string name="volume_keys_to_phone">Envoyer les boutons de volume au téléphone</string>
+     <string name="volume_keys_to_phone_summary">Les boutons de volume règlent le téléphone, pas cet appareil.</string>
+     <string name="volume_keys_to_phone_help">Envoie les boutons de volume de cet appareil au téléphone via Android Auto au lieu de changer le volume ici. Utilisez-le quand le téléphone diffuse le son lui-même: Sortie audio désactivée, ou téléphone connecté au Bluetooth de la voiture.\n\nFonctionne tant qu\'Android Auto est à l\'écran, et seulement si Android Auto sur le téléphone réagit aux touches de volume.</string>
+diff --git a/app/src/main/res/values-hi/strings.xml b/app/src/main/res/values-hi/strings.xml
+index 5a00214a..b38e9fde 100644
+--- a/app/src/main/res/values-hi/strings.xml
++++ b/app/src/main/res/values-hi/strings.xml
+@@ -753,7 +753,18 @@
+     <string name="media_key_routing_auto">स्वचालित</string>
+     <string name="media_key_routing_never">कभी नहीं</string>
+     <string name="media_key_routing_help">हमेशा: अगला, पिछला और चलाएँ/रोकें हमेशा Android Auto को भेजे जाते हैं। जब तक एक बार दबाने पर दो ट्रैक न छूट जाएँ, यही चुनें।\n\nस्वचालित: इस हेडयूनिट का फ़ोन से ब्लूटूथ मीडिया कनेक्शन होने पर इन्हें भेजना बंद कर देता है, क्योंकि वह कनेक्शन यह काम पहले ही कर देता है। एक बार दबाने पर दो ट्रैक छूटते हों और आपका फ़ोन इसी हेडयूनिट से पेयर हो, तो इसे चुनें।\n\nकभी नहीं: इन्हें कभी नहीं भेजता, बटन ब्लूटूथ के भरोसे छोड़ देता है। एक बार दबाने पर दो ट्रैक छूटते हों और आपका फ़ोन इस हेडयूनिट से नहीं, कार के अपने सिस्टम से पेयर हो, तो इसे चुनें। स्वचालित मोड उस कनेक्शन को पहचान नहीं पाता।</string>
+-    <string name="media_key_routing_hint_common">केवल मीडिया बटन प्रभावित होते हैं। रोटरी नियंत्रक, D-पैड, बैक और एंटर हमेशा Android Auto तक पहुँचते हैं।</string>
++    <string name="media_key_routing_hint_common">केवल मीडिया बटन प्रभावित होते हैं। बाकी बटनों की अपनी सेटिंग है: बटन Android Auto को भेजें।</string>
++    <string name="aa_key_groups">बटन Android Auto को भेजें</string>
++    <string name="aa_key_groups_all">सभी</string>
++    <string name="aa_key_groups_none">कोई नहीं</string>
++    <string name="aa_key_groups_except">%1$s को छोड़कर सभी</string>
++    <string name="aa_key_groups_help">इस यूनिट के कौन-से बटन Android Auto तक पहुँचें। किसी समूह का निशान हटाएँ ताकि उसके बटन Android Auto तक न जाएँ, उदाहरण के लिए जब स्टीयरिंग का OK या बैक कार के अपने सिस्टम को भी चलाता है और Android Auto अनचाहे कुछ चुन लेता है।\n\nमीडिया बटनों की अपनी सेटिंग ऊपर है, और वॉल्यूम बटनों की नीचे। की-मैप में असाइन किया गया बटन हमेशा असाइन किए अनुसार भेजा जाता है।</string>
++    <string name="aa_key_group_select">OK / चुनें</string>
++    <string name="aa_key_group_direction">तीर और घुमाने वाला नॉब</string>
++    <string name="aa_key_group_back">वापस जाएं</string>
++    <string name="aa_key_group_phone">कॉल और कॉल काटें</string>
++    <string name="aa_key_group_assistant">वॉइस असिस्टेंट</string>
++    <string name="aa_key_group_other">कीबोर्ड और अन्य बटन</string>
+     <string name="volume_keys_to_phone">वॉल्यूम बटन फ़ोन को भेजें</string>
+     <string name="volume_keys_to_phone_summary">वॉल्यूम बटन इस यूनिट के बजाय फ़ोन का वॉल्यूम बदलते हैं।</string>
+     <string name="volume_keys_to_phone_help">इस हेडयूनिट के वॉल्यूम बटन, यहाँ वॉल्यूम बदलने के बजाय, Android Auto के ज़रिए फ़ोन को भेजता है। इसे तब इस्तेमाल करें जब फ़ोन खुद आवाज़ चलाता हो: ऑडियो सिंक बंद हो, या फ़ोन कार के ब्लूटूथ से जुड़ा हो।\n\nयह तभी काम करता है जब Android Auto स्क्रीन पर हो, और केवल तब जब फ़ोन का Android Auto वॉल्यूम कुंजियों पर प्रतिक्रिया देता हो।</string>
+diff --git a/app/src/main/res/values-hu/strings.xml b/app/src/main/res/values-hu/strings.xml
+index d06d7179..d34b7cc7 100644
+--- a/app/src/main/res/values-hu/strings.xml
++++ b/app/src/main/res/values-hu/strings.xml
+@@ -1158,7 +1158,18 @@
+     <string name="media_key_routing_auto">Automatikus</string>
+     <string name="media_key_routing_never">Soha</string>
+     <string name="media_key_routing_help">Mindig: A következő, az előző és a lejátszás/szünet gomb jelét mindig megkapja az Android Auto. Ezt használja, kivéve ha egy gombnyomás két számot ugrik át.\n\nAutomatikus: Nem küldi el őket, amíg a fejegységnek Bluetooth médiakapcsolata van a telefonnal, mert ez a kapcsolat már elvégzi a műveletet. Ezt válassza, ha egy gombnyomás két számot ugrik át, és a telefon ehhez a fejegységhez van párosítva.\n\nSoha: Soha nem küldi el őket, a gombokat a Bluetoothra hagyja. Ezt válassza, ha egy gombnyomás két számot ugrik át, és a telefon az autó saját rendszeréhez van párosítva, nem ehhez a fejegységhez, mert az Automatikus mód ezt a kapcsolatot nem tudja észlelni.</string>
+-    <string name="media_key_routing_hint_common">Csak a médiagombokat érinti. A forgókapcsolók, a D-pad, a Vissza és az Enter gomb mindig eljut az Android Autóhoz.</string>
++    <string name="media_key_routing_hint_common">Csak a médiagombokat érinti. A többi gombnak saját beállítása van: Gombok küldése az Android Autónak.</string>
++    <string name="aa_key_groups">Gombok küldése az Android Autónak</string>
++    <string name="aa_key_groups_all">Összes</string>
++    <string name="aa_key_groups_none">Egyik sem</string>
++    <string name="aa_key_groups_except">Mind, kivéve: %1$s</string>
++    <string name="aa_key_groups_help">Az egység mely gombjai jutnak el az Android Autóhoz. Vedd ki a pipát egy csoport elől, hogy a gombjai ne jussanak el az Android Autóhoz, például ha a kormányon lévő OK vagy Vissza az autó gyári rendszerét is vezérli, és az Android Auto véletlenül kiválaszt valamit.\n\nA médiagomboknak fent, a hangerőgomboknak lent van saját beállításuk. A gombkiosztásban hozzárendelt gomb mindig a hozzárendelés szerint megy tovább.</string>
++    <string name="aa_key_group_select">OK / Kiválasztás</string>
++    <string name="aa_key_group_direction">Nyilak és forgatógomb</string>
++    <string name="aa_key_group_back">Vissza</string>
++    <string name="aa_key_group_phone">Hívás és bontás</string>
++    <string name="aa_key_group_assistant">Hangasszisztens</string>
++    <string name="aa_key_group_other">Billentyűzet és egyéb gombok</string>
+     <string name="volume_keys_to_phone">Hangerőgombok küldése a telefonnak</string>
+     <string name="volume_keys_to_phone_summary">A hangerőgombok a telefon hangerejét állítják, nem a fejegységét.</string>
+     <string name="volume_keys_to_phone_help">Az Android Autón keresztül a telefonnak küldi a fejegység hangerőgombjait, ahelyett hogy itt változtatná a hangerőt. Akkor használja, ha a hangot maga a telefon játssza le: a Hang fogadása ki van kapcsolva, vagy a telefon az autó Bluetooth-jához csatlakozik.\n\nAkkor működik, amikor az Android Auto a képernyőn van, és csak ha a telefonon futó Android Auto reagál a hangerőgombokra.</string>
+diff --git a/app/src/main/res/values-in/strings.xml b/app/src/main/res/values-in/strings.xml
+index 76530a41..2e1d1f47 100644
+--- a/app/src/main/res/values-in/strings.xml
++++ b/app/src/main/res/values-in/strings.xml
+@@ -754,7 +754,18 @@
+     <string name="media_key_routing_auto">Otomatis</string>
+     <string name="media_key_routing_never">Tidak Pernah</string>
+     <string name="media_key_routing_help">Selalu: Berikutnya, sebelumnya, dan putar/jeda selalu dikirim ke Android Auto. Gunakan ini kecuali satu tekanan melewati dua trek.\n\nOtomatis: Berhenti mengirimkannya saat headunit ini memiliki koneksi media Bluetooth ke ponsel, karena koneksi tersebut sudah menjalankan tindakan itu. Pilih ini jika satu tekanan melewati dua trek dan ponsel Anda dipasangkan ke headunit ini.\n\nTidak Pernah: Tidak pernah mengirimkannya, sehingga tombol ditangani oleh Bluetooth. Pilih ini jika satu tekanan melewati dua trek dan ponsel Anda dipasangkan ke sistem bawaan mobil, bukan ke headunit ini. Mode Otomatis tidak dapat mendeteksi koneksi tersebut.</string>
+-    <string name="media_key_routing_hint_common">Hanya tombol media yang terpengaruh. Pengontrol putar, D-pad, Kembali, dan Enter selalu diteruskan ke Android Auto.</string>
++    <string name="media_key_routing_hint_common">Hanya tombol media yang terpengaruh. Tombol lain punya pengaturannya sendiri: Kirim Tombol Ke Android Auto.</string>
++    <string name="aa_key_groups">Kirim Tombol Ke Android Auto</string>
++    <string name="aa_key_groups_all">Semua</string>
++    <string name="aa_key_groups_none">Tidak ada</string>
++    <string name="aa_key_groups_except">Semua kecuali %1$s</string>
++    <string name="aa_key_groups_help">Tombol mana dari unit ini yang sampai ke Android Auto. Hapus centang suatu grup agar tombolnya tidak dikirim ke Android Auto, misalnya saat OK atau Kembali di setir juga mengendalikan sistem bawaan mobil dan Android Auto memilih sesuatu tanpa sengaja.\n\nTombol media punya pengaturannya sendiri di atas, dan tombol volume di bawah. Tombol yang ditetapkan di pemetaan tombol selalu dikirim sesuai penetapannya.</string>
++    <string name="aa_key_group_select">OK / Pilih</string>
++    <string name="aa_key_group_direction">Panah dan kenop putar</string>
++    <string name="aa_key_group_back">Kembali</string>
++    <string name="aa_key_group_phone">Panggil dan tutup</string>
++    <string name="aa_key_group_assistant">Asisten suara</string>
++    <string name="aa_key_group_other">Keyboard dan tombol lain</string>
+     <string name="volume_keys_to_phone">Kirim Tombol Volume Ke Ponsel</string>
+     <string name="volume_keys_to_phone_summary">Tombol volume mengubah volume ponsel, bukan volume unit ini.</string>
+     <string name="volume_keys_to_phone_help">Mengirim tombol volume unit ini ke ponsel melalui Android Auto alih-alih mengubah volume di sini. Gunakan ini saat ponsel memutar suaranya sendiri: Audio Sink nonaktif, atau ponsel terhubung ke Bluetooth mobil.\n\nBerfungsi saat Android Auto tampil di layar, dan hanya jika Android Auto di ponsel merespons tombol volume.</string>
+diff --git a/app/src/main/res/values-it/strings.xml b/app/src/main/res/values-it/strings.xml
+index 6a5d6e31..07ef446c 100644
+--- a/app/src/main/res/values-it/strings.xml
++++ b/app/src/main/res/values-it/strings.xml
+@@ -1162,7 +1162,18 @@
+     <string name="media_key_routing_auto">Automatico</string>
+     <string name="media_key_routing_never">Mai</string>
+     <string name="media_key_routing_help">Sempre: I tasti Avanti, Indietro e Play/Pausa vengono sempre inviati ad Android Auto. Usa questa opzione, a meno che una pressione non salti due brani.\n\nAutomatico: Smette di inviarli finché l\'autoradio ha una connessione multimediale Bluetooth con il telefono, perché quella connessione esegue già l\'azione. Scegli questa opzione se una pressione salta due brani e il telefono è associato a questa autoradio.\n\nMai: Non li invia mai e lascia i tasti al Bluetooth. Scegli questa opzione se una pressione salta due brani e il telefono è associato al sistema dell\'auto invece che a questa autoradio: la modalità Automatico non può rilevare quella connessione.</string>
+-    <string name="media_key_routing_hint_common">Cambiano solo i tasti multimediali. Manopole, D-pad, Indietro e Invio arrivano sempre ad Android Auto.</string>
++    <string name="media_key_routing_hint_common">Cambiano solo i tasti multimediali. Gli altri tasti hanno la loro impostazione: Invia i tasti ad Android Auto.</string>
++    <string name="aa_key_groups">Invia i tasti ad Android Auto</string>
++    <string name="aa_key_groups_all">Tutti</string>
++    <string name="aa_key_groups_none">Nessuno</string>
++    <string name="aa_key_groups_except">Tutti tranne %1$s</string>
++    <string name="aa_key_groups_help">Quali tasti di questa unità arrivano ad Android Auto. Togli la spunta a un gruppo perché i suoi tasti non arrivino ad Android Auto, per esempio quando OK o Indietro sul volante comandano anche il sistema originale dell’auto e Android Auto seleziona cose senza volerlo.\n\nI tasti multimediali hanno la loro impostazione sopra, quelli del volume quella sotto. Un tasto assegnato nella mappatura tasti viene sempre inviato come assegnato.</string>
++    <string name="aa_key_group_select">OK / Seleziona</string>
++    <string name="aa_key_group_direction">Frecce e manopola</string>
++    <string name="aa_key_group_back">Indietro</string>
++    <string name="aa_key_group_phone">Chiama e riaggancia</string>
++    <string name="aa_key_group_assistant">Assistente vocale</string>
++    <string name="aa_key_group_other">Tastiera e altri tasti</string>
+     <string name="volume_keys_to_phone">Invia i tasti del volume al telefono</string>
+     <string name="volume_keys_to_phone_summary">I tasti del volume regolano il telefono, non questa unità.</string>
+     <string name="volume_keys_to_phone_help">Invia i tasti del volume di questa unità al telefono tramite Android Auto invece di cambiare il volume qui. Usalo quando è il telefono a riprodurre l\'audio: Uscita audio disattivata, o telefono collegato al Bluetooth dell\'auto.\n\nFunziona mentre Android Auto è sullo schermo, e solo se Android Auto sul telefono risponde ai tasti del volume.</string>
+diff --git a/app/src/main/res/values-ja/strings.xml b/app/src/main/res/values-ja/strings.xml
+index bd661149..a91f3673 100644
+--- a/app/src/main/res/values-ja/strings.xml
++++ b/app/src/main/res/values-ja/strings.xml
+@@ -1162,7 +1162,18 @@
+     <string name="media_key_routing_auto">自動</string>
+     <string name="media_key_routing_never">送信しない</string>
+     <string name="media_key_routing_help">常に送信：次へ、前へ、再生/一時停止のボタン操作を常に Android Auto に送信します。1 回押すと 2 曲飛ばされる場合を除き、この設定を使ってください。\n\n自動：このヘッドユニットがスマートフォンと Bluetooth のメディア接続を持っている間は、送信を止めます。その接続がすでに同じ操作を行うためです。1 回押すと 2 曲飛ばされ、スマートフォンがこのヘッドユニットとペアリングされている場合に選んでください。\n\n送信しない：送信せず、ボタン操作を Bluetooth に任せます。1 回押すと 2 曲飛ばされ、スマートフォンがこのヘッドユニットではなく車載システムにペアリングされている場合に選んでください。「自動」ではその接続を検出できません。</string>
+-    <string name="media_key_routing_hint_common">影響を受けるのはメディアボタンだけです。ロータリーコントローラー、十字キー、戻る、決定は常に Android Auto に届きます。</string>
++    <string name="media_key_routing_hint_common">影響を受けるのはメディアボタンだけです。その他のキーには専用の設定があります：キーを Android Auto に送信。</string>
++    <string name="aa_key_groups">キーを Android Auto に送信</string>
++    <string name="aa_key_groups_all">すべて</string>
++    <string name="aa_key_groups_none">なし</string>
++    <string name="aa_key_groups_except">%1$s 以外すべて</string>
++    <string name="aa_key_groups_help">本機のどのキーを Android Auto に届けるかを選びます。グループのチェックを外すと、そのキーは Android Auto に送られません。たとえばハンドルの OK や戻るが車の純正システムも操作していて、Android Auto が意図せず何かを選んでしまう場合です。\n\nメディアボタンは上の設定、音量ボタンは下の設定で選びます。キー割り当てで割り当てたキーは、常に割り当てどおりに送られます。</string>
++    <string name="aa_key_group_select">OK / 決定</string>
++    <string name="aa_key_group_direction">矢印とロータリーノブ</string>
++    <string name="aa_key_group_back">戻る</string>
++    <string name="aa_key_group_phone">発信と終話</string>
++    <string name="aa_key_group_assistant">音声アシスタント</string>
++    <string name="aa_key_group_other">キーボードとその他のキー</string>
+     <string name="volume_keys_to_phone">音量ボタンをスマートフォンに送信</string>
+     <string name="volume_keys_to_phone_summary">音量ボタンでこの機器ではなくスマートフォンの音量を変えます。</string>
+     <string name="volume_keys_to_phone_help">このヘッドユニットの音量ボタンを、ここで音量を変える代わりに Android Auto 経由でスマートフォンに送ります。スマートフォン自体が音を再生しているとき（オーディオシンクがオフのとき、またはスマートフォンが車の Bluetooth に接続されているとき）に使ってください。\n\nAndroid Auto が画面に表示されている間だけ動作し、スマートフォンの Android Auto が音量キーに反応する場合に限ります。</string>
+diff --git a/app/src/main/res/values-ka/strings.xml b/app/src/main/res/values-ka/strings.xml
+index a4982c10..b7e46b3a 100644
+--- a/app/src/main/res/values-ka/strings.xml
++++ b/app/src/main/res/values-ka/strings.xml
+@@ -1085,7 +1085,18 @@
+     <string name="media_key_routing_auto">ავტომატურად</string>
+     <string name="media_key_routing_never">არასოდეს</string>
+     <string name="media_key_routing_help">ყოველთვის: შემდეგი, წინა და დაკვრა/პაუზა ყოველთვის იგზავნება Android Auto-ში. გამოიყენეთ ეს რეჟიმი, თუ ერთი დაჭერა ორ ტრეკს არ გამოტოვებს.\n\nავტომატურად: ღილაკების გაგზავნა წყდება, სანამ მაგნიტოლას ტელეფონთან Bluetooth მედია კავშირი აქვს, რადგან ეს კავშირი მოქმედებას თავად ასრულებს. აირჩიეთ, თუ ერთი დაჭერა ორ ტრეკს გამოტოვებს და ტელეფონი ამ მაგნიტოლასთანაა დაწყვილებული.\n\nარასოდეს: ღილაკები არასოდეს იგზავნება და Bluetooth-ს რჩება. აირჩიეთ, თუ ერთი დაჭერა ორ ტრეკს გამოტოვებს და ტელეფონი ამ მაგნიტოლასთან კი არა, მანქანის საკუთარ სისტემასთანაა დაწყვილებული: რეჟიმი „ავტომატურად“ ამ კავშირს ვერ აღმოაჩენს.</string>
+-    <string name="media_key_routing_hint_common">მხოლოდ მედია ღილაკებზე მოქმედებს. მბრუნავი მართვის ელემენტები, D-pad, „უკან“ და Enter ყოველთვის Android Auto-ში იგზავნება.</string>
++    <string name="media_key_routing_hint_common">მხოლოდ მედია ღილაკებზე მოქმედებს. სხვა ღილაკებს საკუთარი პარამეტრი აქვთ: ღილაკების გაგზავნა Android Auto-ში.</string>
++    <string name="aa_key_groups">ღილაკების გაგზავნა Android Auto-ში</string>
++    <string name="aa_key_groups_all">ყველა</string>
++    <string name="aa_key_groups_none">არცერთი</string>
++    <string name="aa_key_groups_except">ყველა, გარდა: %1$s</string>
++    <string name="aa_key_groups_help">ამ მოწყობილობის რომელი ღილაკები მიდის Android Auto-მდე. მოხსენით ჯგუფს მონიშვნა, რომ მისი ღილაკები Android Auto-ში არ გაიგზავნოს, მაგალითად, როცა საჭეზე OK ან „უკან“ მანქანის ქარხნულ სისტემასაც მართავს და Android Auto შემთხვევით რაღაცას ირჩევს.\n\nმედია ღილაკებს ზემოთ აქვთ საკუთარი პარამეტრი, ხმის ღილაკებს — ქვემოთ. ღილაკების მინიჭებაში მინიჭებული ღილაკი ყოველთვის მინიჭებისამებრ იგზავნება.</string>
++    <string name="aa_key_group_select">OK / არჩევა</string>
++    <string name="aa_key_group_direction">ისრები და მბრუნავი ღილაკი</string>
++    <string name="aa_key_group_back">უკან</string>
++    <string name="aa_key_group_phone">ზარი და გათიშვა</string>
++    <string name="aa_key_group_assistant">ხმოვანი ასისტენტი</string>
++    <string name="aa_key_group_other">კლავიატურა და სხვა ღილაკები</string>
+     <string name="volume_keys_to_phone">ხმის ღილაკების გაგზავნა ტელეფონზე</string>
+     <string name="volume_keys_to_phone_summary">ხმის ღილაკები ტელეფონის ხმას ცვლის და არა ამ მოწყობილობის.</string>
+     <string name="volume_keys_to_phone_help">აგზავნის ამ მოწყობილობის ხმის ღილაკებს ტელეფონზე Android Auto-ს მეშვეობით, ნაცვლად იმისა, რომ ხმა აქ შეცვალოს. გამოიყენეთ, როცა ხმას თავად ტელეფონი უკრავს: აუდიო მიმღები (Audio Sink) გამორთულია, ან ტელეფონი მანქანის Bluetooth-ზეა მიერთებული.\n\nმუშაობს, როცა Android Auto ეკრანზეა, და მხოლოდ მაშინ, თუ ტელეფონის Android Auto ხმის ღილაკებზე რეაგირებს.</string>
+diff --git a/app/src/main/res/values-ko/strings.xml b/app/src/main/res/values-ko/strings.xml
+index 7a62d880..936df8ef 100644
+--- a/app/src/main/res/values-ko/strings.xml
++++ b/app/src/main/res/values-ko/strings.xml
+@@ -1155,7 +1155,18 @@
+     <string name="media_key_routing_auto">자동</string>
+     <string name="media_key_routing_never">사용 안 함</string>
+     <string name="media_key_routing_help">항상: 다음 곡, 이전 곡, 재생/일시중지 버튼의 입력을 항상 Android Auto로 전달합니다. 버튼을 한 번 눌렀을 때 두 곡이 넘어가는 경우가 아니라면 이 옵션을 사용하세요.\n\n자동: 휴대전화와 이 헤드유닛이 블루투스 오디오로 연결되어 있는 동안에는 버튼 입력을 Android Auto로 전달하지 않습니다. 같은 버튼 입력이 블루투스를 통해 이미 처리되기 때문입니다. 버튼을 한 번 눌렀을 때 두 곡이 넘어가고 휴대전화가 이 헤드유닛과 페어링되어 있다면 이 옵션을 선택하세요.\n\n사용 안 함: 버튼 신호를 보내지 않고 블루투스가 처리하도록 합니다. 버튼을 한 번 눌렀을 때 두 곡이 넘어가고 휴대전화가 이 헤드유닛이 아닌 차량 자체 시스템과 페어링되어 있다면 이 옵션을 선택하세요. 자동 모드는 그 연결을 감지하지 못합니다.</string>
+-    <string name="media_key_routing_hint_common">미디어 버튼에만 적용됩니다. 로터리 컨트롤러, 방향 패드, 뒤로 가기, 엔터 키는 항상 Android Auto로 전달됩니다.</string>
++    <string name="media_key_routing_hint_common">미디어 버튼에만 적용됩니다. 다른 키는 별도의 설정이 있습니다: 키 입력을 Android Auto로 전달.</string>
++    <string name="aa_key_groups">키 입력을 Android Auto로 전달</string>
++    <string name="aa_key_groups_all">모두</string>
++    <string name="aa_key_groups_none">없음</string>
++    <string name="aa_key_groups_except">%1$s 제외 모두</string>
++    <string name="aa_key_groups_help">이 기기의 어떤 키가 Android Auto에 전달될지 선택합니다. 그룹의 체크를 해제하면 해당 키는 Android Auto로 전달되지 않습니다. 예를 들어 스티어링 휠의 OK나 뒤로 버튼이 차량 순정 시스템도 조작해서 Android Auto가 의도치 않게 무언가를 선택할 때 사용하세요.\n\n미디어 버튼은 위의 설정, 볼륨 버튼은 아래의 설정을 따릅니다. 키 매핑에서 지정한 키는 항상 지정한 대로 전달됩니다.</string>
++    <string name="aa_key_group_select">OK / 선택</string>
++    <string name="aa_key_group_direction">방향키와 로터리 노브</string>
++    <string name="aa_key_group_back">뒤로</string>
++    <string name="aa_key_group_phone">통화와 종료</string>
++    <string name="aa_key_group_assistant">음성 어시스턴트</string>
++    <string name="aa_key_group_other">키보드와 기타 키</string>
+     <string name="volume_keys_to_phone">볼륨 버튼 입력을 휴대전화로 전달</string>
+     <string name="volume_keys_to_phone_summary">볼륨 버튼으로 이 기기 대신 휴대전화의 볼륨을 조절합니다.</string>
+     <string name="volume_keys_to_phone_help">이 헤드유닛의 볼륨 버튼 입력을 여기서 볼륨을 바꾸는 대신 Android Auto를 통해 휴대전화로 전달합니다. 휴대전화가 직접 소리를 재생할 때 사용하세요. 오디오 수신이 꺼져 있거나 휴대전화가 차량 블루투스에 연결된 경우입니다.\n\nAndroid Auto가 화면에 표시되어 있을 때만 작동하며, 휴대전화의 Android Auto가 볼륨 키에 반응하는 경우에만 적용됩니다.</string>
+diff --git a/app/src/main/res/values-nl/strings.xml b/app/src/main/res/values-nl/strings.xml
+index 3fadc130..c326d7dc 100644
+--- a/app/src/main/res/values-nl/strings.xml
++++ b/app/src/main/res/values-nl/strings.xml
+@@ -1162,7 +1162,18 @@
+     <string name="media_key_routing_auto">Automatisch</string>
+     <string name="media_key_routing_never">Nooit</string>
+     <string name="media_key_routing_help">Altijd: Volgende, vorige en afspelen/pauzeren worden altijd naar Android Auto gestuurd. Kies dit, tenzij één druk twee nummers overslaat.\n\nAutomatisch: Stuurt ze niet door zolang deze headunit een Bluetooth-mediaverbinding met de telefoon heeft, omdat die verbinding de actie al uitvoert. Kies dit als één druk twee nummers overslaat en je telefoon met deze headunit is gekoppeld.\n\nNooit: Stuurt ze nooit door en laat de toetsen aan Bluetooth over. Kies dit als één druk twee nummers overslaat en je telefoon is gekoppeld met het eigen systeem van de auto en niet met deze headunit. Automatisch kan die verbinding niet herkennen.</string>
+-    <string name="media_key_routing_hint_common">Dit geldt alleen voor de mediatoetsen. Draaiknoppen, D-pad, Terug en Enter bereiken Android Auto altijd.</string>
++    <string name="media_key_routing_hint_common">Dit geldt alleen voor de mediatoetsen. De andere toetsen hebben hun eigen instelling: Toetsen naar Android Auto sturen.</string>
++    <string name="aa_key_groups">Toetsen naar Android Auto sturen</string>
++    <string name="aa_key_groups_all">Alle</string>
++    <string name="aa_key_groups_none">Geen</string>
++    <string name="aa_key_groups_except">Alle behalve %1$s</string>
++    <string name="aa_key_groups_help">Welke toetsen van deze unit Android Auto bereiken. Haal het vinkje bij een groep weg om die toetsen bij Android Auto weg te houden, bijvoorbeeld als OK of Terug op het stuur ook het eigen systeem van de auto bedient en Android Auto ongewild iets kiest.\n\nMediatoetsen hebben hierboven hun eigen instelling, volumetoetsen hieronder. Een toets die in de toetstoewijzing is toegewezen, wordt altijd zo verstuurd.</string>
++    <string name="aa_key_group_select">OK / Selecteren</string>
++    <string name="aa_key_group_direction">Pijlen en draaiknop</string>
++    <string name="aa_key_group_back">Terug</string>
++    <string name="aa_key_group_phone">Bellen en ophangen</string>
++    <string name="aa_key_group_assistant">Spraakassistent</string>
++    <string name="aa_key_group_other">Toetsenbord en andere toetsen</string>
+     <string name="volume_keys_to_phone">Volumetoetsen naar de telefoon sturen</string>
+     <string name="volume_keys_to_phone_summary">Volumetoetsen regelen het volume van de telefoon, niet van dit apparaat.</string>
+     <string name="volume_keys_to_phone_help">Stuurt de volumetoetsen van dit apparaat via Android Auto naar de telefoon in plaats van het volume hier te wijzigen. Gebruik dit als de telefoon het geluid zelf afspeelt: Audio-sink uit, of de telefoon verbonden met de Bluetooth van de auto.\n\nWerkt zolang Android Auto op het scherm staat, en alleen als Android Auto op de telefoon op volumetoetsen reageert.</string>
+diff --git a/app/src/main/res/values-pl/strings.xml b/app/src/main/res/values-pl/strings.xml
+index 5379bb6d..340aff90 100644
+--- a/app/src/main/res/values-pl/strings.xml
++++ b/app/src/main/res/values-pl/strings.xml
+@@ -1163,7 +1163,18 @@
+     <string name="media_key_routing_auto">Automatycznie</string>
+     <string name="media_key_routing_never">Nigdy</string>
+     <string name="media_key_routing_help">Zawsze: Przyciski następnego, poprzedniego utworu i odtwarzania/pauzy są zawsze wysyłane do Android Auto. Używaj tej opcji, chyba że jedno naciśnięcie pomija dwa utwory.\n\nAutomatycznie: Blokuje przesyłanie poleceń sterowania, gdy stacja jest połączona z telefonem przez profil multimedialny Bluetooth (ponieważ ten profil obsługuje już sterowanie). Wybierz tę opcję, jeśli pojedyncze naciśnięcie przycisku pomija dwa utwory naraz, a telefon jest sparowany ze stacją.\n\nNigdy: Nigdy nie przesyła sygnałów przycisków do Android Auto, pozostawiając sterowanie przez Bluetooth. Wybierz tę opcję, jeśli pojedyncze naciśnięcie pomija dwa utwory, a telefon jest sparowany z fabrycznym systemem auta zamiast z tą stacją (tryb „Automatycznie” nie wykrywa takiego połączenia).</string>
+-    <string name="media_key_routing_hint_common">Dotyczy wyłącznie przycisków sterowania multimediami. Pokrętła, D-Pad, przyciski Wstecz i Enter zawsze trafiają do Android Auto.</string>
++    <string name="media_key_routing_hint_common">Dotyczy wyłącznie przycisków multimedialnych. Pozostałe klawisze mają własne ustawienie: Wysyłaj klawisze do Android Auto.</string>
++    <string name="aa_key_groups">Wysyłaj klawisze do Android Auto</string>
++    <string name="aa_key_groups_all">Wszystkie</string>
++    <string name="aa_key_groups_none">Żadne</string>
++    <string name="aa_key_groups_except">Wszystkie oprócz: %1$s</string>
++    <string name="aa_key_groups_help">Które klawisze tej jednostki trafiają do Android Auto. Odznacz grupę, aby jej klawisze nie trafiały do Android Auto, na przykład gdy OK lub Wstecz na kierownicy obsługuje też fabryczny system auta, a Android Auto wybiera coś niechcący.\n\nPrzyciski multimedialne mają własne ustawienie powyżej, a przyciski głośności poniżej. Klawisz przypisany w mapowaniu klawiszy jest zawsze wysyłany zgodnie z przypisaniem.</string>
++    <string name="aa_key_group_select">OK / Wybierz</string>
++    <string name="aa_key_group_direction">Strzałki i pokrętło</string>
++    <string name="aa_key_group_back">Wstecz</string>
++    <string name="aa_key_group_phone">Połącz i rozłącz</string>
++    <string name="aa_key_group_assistant">Asystent głosowy</string>
++    <string name="aa_key_group_other">Klawiatura i inne klawisze</string>
+     <string name="volume_keys_to_phone">Wysyłaj przyciski głośności do telefonu</string>
+     <string name="volume_keys_to_phone_summary">Przyciski głośności zmieniają głośność telefonu, a nie tej stacji.</string>
+     <string name="volume_keys_to_phone_help">Wysyła przyciski głośności tej stacji do telefonu przez Android Auto zamiast zmieniać głośność tutaj. Używaj, gdy dźwięk odtwarza sam telefon: Wyjście dźwięku jest wyłączone albo telefon jest połączony z Bluetooth samochodu.\n\nDziała, gdy Android Auto jest na ekranie, i tylko jeśli Android Auto w telefonie reaguje na przyciski głośności.</string>
+diff --git a/app/src/main/res/values-pt-rBR/strings.xml b/app/src/main/res/values-pt-rBR/strings.xml
+index 01e2957f..365ed86d 100644
+--- a/app/src/main/res/values-pt-rBR/strings.xml
++++ b/app/src/main/res/values-pt-rBR/strings.xml
+@@ -1160,7 +1160,18 @@
+     <string name="media_key_routing_auto">Automático</string>
+     <string name="media_key_routing_never">Nunca</string>
+     <string name="media_key_routing_help">Sempre: Próxima, anterior e reproduzir/pausar sempre são enviados ao Android Auto. Use esta opção, a menos que um toque pule duas faixas.\n\nAutomático: Para de enviá-los enquanto esta central tiver uma conexão de mídia Bluetooth com o smartphone, porque essa conexão já executa a ação. Escolha esta opção se um toque pular duas faixas e o smartphone estiver pareado com esta central.\n\nNunca: Nunca os envia e deixa os botões para o Bluetooth. Escolha esta opção se um toque pular duas faixas e o smartphone estiver pareado com o sistema do próprio carro, e não com esta central. O modo Automático não detecta essa conexão.</string>
+-    <string name="media_key_routing_hint_common">Só os botões de mídia são afetados. Controles rotativos, direcional, Voltar e Enter sempre chegam ao Android Auto.</string>
++    <string name="media_key_routing_hint_common">Só os botões de mídia são afetados. As outras teclas têm o próprio ajuste: Enviar teclas ao Android Auto.</string>
++    <string name="aa_key_groups">Enviar teclas ao Android Auto</string>
++    <string name="aa_key_groups_all">Todas</string>
++    <string name="aa_key_groups_none">Nenhuma</string>
++    <string name="aa_key_groups_except">Todas exceto %1$s</string>
++    <string name="aa_key_groups_help">Quais teclas desta unidade chegam ao Android Auto. Desmarque um grupo para que as teclas dele não cheguem ao Android Auto, por exemplo quando o OK ou o Voltar do volante também comandam o sistema original do carro e o Android Auto seleciona algo sem querer.\n\nOs botões de mídia têm o próprio ajuste acima, e os de volume, o de baixo. Uma tecla atribuída no mapeamento de teclas é sempre enviada como atribuída.</string>
++    <string name="aa_key_group_select">OK / Selecionar</string>
++    <string name="aa_key_group_direction">Setas e botão giratório</string>
++    <string name="aa_key_group_back">Voltar</string>
++    <string name="aa_key_group_phone">Ligar e desligar chamada</string>
++    <string name="aa_key_group_assistant">Assistente de voz</string>
++    <string name="aa_key_group_other">Teclado e outras teclas</string>
+     <string name="volume_keys_to_phone">Enviar botões de volume ao celular</string>
+     <string name="volume_keys_to_phone_summary">Os botões de volume mudam o volume do celular, não o desta unidade.</string>
+     <string name="volume_keys_to_phone_help">Envia os botões de volume desta unidade ao celular pelo Android Auto em vez de mudar o volume aqui. Use quando o próprio celular toca o som: Receptor de áudio desativado, ou celular conectado ao Bluetooth do carro.\n\nFunciona enquanto o Android Auto está na tela, e só se o Android Auto do celular responder às teclas de volume.</string>
+diff --git a/app/src/main/res/values-pt-rPT/strings.xml b/app/src/main/res/values-pt-rPT/strings.xml
+index 1af7673a..68c81787 100644
+--- a/app/src/main/res/values-pt-rPT/strings.xml
++++ b/app/src/main/res/values-pt-rPT/strings.xml
+@@ -755,7 +755,18 @@
+     <string name="media_key_routing_auto">Automático</string>
+     <string name="media_key_routing_never">Nunca</string>
+     <string name="media_key_routing_help">Sempre: Seguinte, anterior e reproduzir/pausa são sempre enviados para o Android Auto. Utilize esta opção, a menos que um toque salte duas faixas.\n\nAutomático: Deixa de os enviar enquanto esta unidade tiver uma ligação multimédia Bluetooth ao telemóvel, pois essa ligação já executa a ação. Escolha esta opção se um toque saltar duas faixas e o telemóvel estiver emparelhado com esta unidade.\n\nNunca: Nunca os envia e deixa os botões a cargo do Bluetooth. Escolha esta opção se um toque saltar duas faixas e o telemóvel estiver emparelhado com o sistema do próprio carro e não com esta unidade, pois o modo Automático não deteta essa ligação.</string>
+-    <string name="media_key_routing_hint_common">Apenas os botões multimédia são afetados. Controladores rotativos, D-pad, Voltar e Enter chegam sempre ao Android Auto.</string>
++    <string name="media_key_routing_hint_common">Apenas os botões multimédia são afetados. As outras teclas têm a sua própria definição: Enviar teclas para o Android Auto.</string>
++    <string name="aa_key_groups">Enviar teclas para o Android Auto</string>
++    <string name="aa_key_groups_all">Todas</string>
++    <string name="aa_key_groups_none">Nenhuma</string>
++    <string name="aa_key_groups_except">Todas exceto %1$s</string>
++    <string name="aa_key_groups_help">Que teclas desta unidade chegam ao Android Auto. Desmarque um grupo para que as suas teclas não cheguem ao Android Auto, por exemplo quando o OK ou o Voltar do volante também comandam o sistema original do carro e o Android Auto seleciona algo sem querer.\n\nOs botões multimédia têm a sua própria definição acima e os de volume a de baixo. Uma tecla atribuída no mapeamento de teclas é sempre enviada como atribuída.</string>
++    <string name="aa_key_group_select">OK / Selecionar</string>
++    <string name="aa_key_group_direction">Setas e botão rotativo</string>
++    <string name="aa_key_group_back">Voltar</string>
++    <string name="aa_key_group_phone">Atender e desligar</string>
++    <string name="aa_key_group_assistant">Assistente de voz</string>
++    <string name="aa_key_group_other">Teclado e outras teclas</string>
+     <string name="volume_keys_to_phone">Enviar botões de volume para o telemóvel</string>
+     <string name="volume_keys_to_phone_summary">Os botões de volume alteram o volume do telemóvel, não o desta unidade.</string>
+     <string name="volume_keys_to_phone_help">Envia os botões de volume desta unidade para o telemóvel através do Android Auto em vez de alterar o volume aqui. Utilize quando o próprio telemóvel reproduz o som: Recetor de áudio (Audio Sink) desativado, ou telemóvel ligado ao Bluetooth do carro.\n\nFunciona enquanto o Android Auto está no ecrã, e só se o Android Auto do telemóvel responder às teclas de volume.</string>
+diff --git a/app/src/main/res/values-ro/strings.xml b/app/src/main/res/values-ro/strings.xml
+index 482565e8..6bbb547f 100644
+--- a/app/src/main/res/values-ro/strings.xml
++++ b/app/src/main/res/values-ro/strings.xml
+@@ -1156,7 +1156,18 @@
+     <string name="media_key_routing_auto">Automat</string>
+     <string name="media_key_routing_never">Niciodată</string>
+     <string name="media_key_routing_help">Întotdeauna: Butoanele următorul, anteriorul și redare/pauză sunt trimise întotdeauna către Android Auto. Folosește această opțiune, cu excepția cazului în care o apăsare sare peste două melodii.\n\nAutomat: Nu le mai trimite cât timp unitatea auto are o conexiune media Bluetooth cu telefonul, deoarece acea conexiune execută deja acțiunea. Alege această opțiune dacă o apăsare sare peste două melodii, iar telefonul este asociat cu această unitate auto.\n\nNiciodată: Nu le trimite niciodată și lasă butoanele în seama Bluetooth. Alege această opțiune dacă o apăsare sare peste două melodii, iar telefonul este asociat cu sistemul propriu al mașinii, nu cu această unitate auto. Modul Automat nu poate detecta acea conexiune.</string>
+-    <string name="media_key_routing_hint_common">Sunt afectate doar butoanele media. Controalele rotative, D-pad, Înapoi și Enter ajung întotdeauna la Android Auto.</string>
++    <string name="media_key_routing_hint_common">Sunt afectate doar butoanele media. Celelalte taste au propria setare: Trimite tastele către Android Auto.</string>
++    <string name="aa_key_groups">Trimite tastele către Android Auto</string>
++    <string name="aa_key_groups_all">Toate</string>
++    <string name="aa_key_groups_none">Niciuna</string>
++    <string name="aa_key_groups_except">Toate în afară de %1$s</string>
++    <string name="aa_key_groups_help">Ce taste ale acestei unități ajung la Android Auto. Debifează un grup ca tastele lui să nu ajungă la Android Auto, de exemplu când OK sau Înapoi de pe volan comandă și sistemul original al mașinii și Android Auto selectează ceva fără să vrei.\n\nButoanele media au propria setare mai sus, iar cele de volum pe cea de mai jos. O tastă atribuită în maparea tastelor este trimisă mereu așa cum a fost atribuită.</string>
++    <string name="aa_key_group_select">OK / Selectare</string>
++    <string name="aa_key_group_direction">Săgeți și buton rotativ</string>
++    <string name="aa_key_group_back">Înapoi</string>
++    <string name="aa_key_group_phone">Apel și închidere</string>
++    <string name="aa_key_group_assistant">Asistent vocal</string>
++    <string name="aa_key_group_other">Tastatură și alte taste</string>
+     <string name="volume_keys_to_phone">Trimite butoanele de volum către telefon</string>
+     <string name="volume_keys_to_phone_summary">Butoanele de volum schimbă volumul telefonului, nu al acestei unități.</string>
+     <string name="volume_keys_to_phone_help">Trimite butoanele de volum ale acestei unități către telefon prin Android Auto, în loc să schimbe volumul aici. Folosește-l când telefonul redă singur sunetul: Receptor audio dezactivat sau telefonul conectat la Bluetooth-ul mașinii.\n\nFuncționează cât timp Android Auto este pe ecran și doar dacă Android Auto de pe telefon răspunde la tastele de volum.</string>
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index 7c8a3b01..dc00752f 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml
+@@ -1157,7 +1157,18 @@ Open Headunit предоставляется «как есть» без каки
+     <string name="media_key_routing_auto">Автоматически</string>
+     <string name="media_key_routing_never">Никогда</string>
+     <string name="media_key_routing_help">Всегда: Кнопки «Следующий», «Предыдущий» и «Пуск/пауза» всегда передаются в Android Auto. Используйте этот вариант, если одно нажатие не пропускает два трека.\n\nАвтоматически: Передача прекращается, пока у этого головного устройства есть Bluetooth-подключение к телефону для мультимедиа, так как это подключение уже выполняет действие. Выберите этот вариант, если одно нажатие пропускает два трека и телефон сопряжён с этим головным устройством.\n\nНикогда: Кнопки не передаются, ими управляет Bluetooth. Выберите этот вариант, если одно нажатие пропускает два трека и телефон сопряжён с собственной системой автомобиля, а не с этим головным устройством: режим «Автоматически» такое подключение не определяет.</string>
+-    <string name="media_key_routing_hint_common">Настройка влияет только на кнопки мультимедиа. Поворотные регуляторы, D-pad, «Назад» и Enter всегда передаются в Android Auto.</string>
++    <string name="media_key_routing_hint_common">Настройка влияет только на кнопки мультимедиа. У остальных кнопок своя настройка: «Передача кнопок в Android Auto».</string>
++    <string name="aa_key_groups">Передача кнопок в Android Auto</string>
++    <string name="aa_key_groups_all">Все</string>
++    <string name="aa_key_groups_none">Никакие</string>
++    <string name="aa_key_groups_except">Все, кроме: %1$s</string>
++    <string name="aa_key_groups_help">Какие кнопки этого устройства доходят до Android Auto. Снимите отметку с группы, чтобы её кнопки не попадали в Android Auto, например когда OK или «Назад» на руле управляют и штатной системой автомобиля, а Android Auto случайно что-то выбирает.\n\nУ кнопок мультимедиа своя настройка выше, у кнопок громкости — ниже. Кнопка, назначенная в раскладке кнопок, всегда передаётся так, как назначена.</string>
++    <string name="aa_key_group_select">OK / Выбор</string>
++    <string name="aa_key_group_direction">Стрелки и поворотный регулятор</string>
++    <string name="aa_key_group_back">Назад</string>
++    <string name="aa_key_group_phone">Вызов и сброс</string>
++    <string name="aa_key_group_assistant">Голосовой ассистент</string>
++    <string name="aa_key_group_other">Клавиатура и другие кнопки</string>
+     <string name="volume_keys_to_phone">Передача кнопок громкости на телефон</string>
+     <string name="volume_keys_to_phone_summary">Кнопки громкости меняют громкость телефона, а не этого устройства.</string>
+     <string name="volume_keys_to_phone_help">Передаёт кнопки громкости этого устройства на телефон через Android Auto вместо изменения громкости здесь. Используйте, когда звук воспроизводит сам телефон: вывод звука выключен или телефон подключён к Bluetooth автомобиля.\n\nРаботает, пока Android Auto на экране, и только если Android Auto на телефоне реагирует на клавиши громкости.</string>
+diff --git a/app/src/main/res/values-th/strings.xml b/app/src/main/res/values-th/strings.xml
+index 1aee848c..2906d1a0 100644
+--- a/app/src/main/res/values-th/strings.xml
++++ b/app/src/main/res/values-th/strings.xml
+@@ -754,7 +754,18 @@
+     <string name="media_key_routing_auto">อัตโนมัติ</string>
+     <string name="media_key_routing_never">ไม่เคย</string>
+     <string name="media_key_routing_help">เสมอ: ปุ่มถัดไป ก่อนหน้า และเล่น/หยุดชั่วคราวจะส่งไปยัง Android Auto เสมอ ใช้ตัวเลือกนี้ เว้นแต่การกดครั้งเดียวข้ามสองเพลง\n\nอัตโนมัติ: จะหยุดส่งปุ่มเหล่านี้ขณะที่เฮดยูนิตนี้มีการเชื่อมต่อสื่อบลูทูธกับโทรศัพท์ เพราะการเชื่อมต่อนั้นทำงานตามปุ่มอยู่แล้ว เลือกตัวเลือกนี้หากกดครั้งเดียวแล้วข้ามสองเพลง และโทรศัพท์จับคู่กับเฮดยูนิตนี้\n\nไม่เคย: ไม่ส่งปุ่มเหล่านี้เลย และปล่อยให้บลูทูธจัดการ เลือกตัวเลือกนี้หากกดครั้งเดียวแล้วข้ามสองเพลง และโทรศัพท์จับคู่กับระบบของรถเอง ไม่ใช่เฮดยูนิตนี้ เพราะโหมดอัตโนมัติตรวจไม่พบการเชื่อมต่อนั้น</string>
+-    <string name="media_key_routing_hint_common">มีผลเฉพาะปุ่มควบคุมสื่อ ปุ่มหมุน D-pad ปุ่มย้อนกลับ และปุ่ม Enter จะส่งไปยัง Android Auto เสมอ</string>
++    <string name="media_key_routing_hint_common">มีผลเฉพาะปุ่มควบคุมสื่อ ปุ่มอื่นมีการตั้งค่าของตัวเอง: ส่งปุ่มไปยัง Android Auto</string>
++    <string name="aa_key_groups">ส่งปุ่มไปยัง Android Auto</string>
++    <string name="aa_key_groups_all">ทั้งหมด</string>
++    <string name="aa_key_groups_none">ไม่มี</string>
++    <string name="aa_key_groups_except">ทั้งหมด ยกเว้น %1$s</string>
++    <string name="aa_key_groups_help">เลือกว่าปุ่มใดของเครื่องนี้จะส่งไปถึง Android Auto ยกเลิกการเลือกกลุ่มเพื่อไม่ให้ปุ่มในกลุ่มนั้นไปถึง Android Auto เช่น เมื่อปุ่ม OK หรือย้อนกลับบนพวงมาลัยควบคุมระบบเดิมของรถด้วย และ Android Auto เลือกสิ่งที่คุณไม่ได้ตั้งใจ\n\nปุ่มสื่อมีการตั้งค่าของตัวเองด้านบน และปุ่มเสียงมีด้านล่าง ปุ่มที่กำหนดไว้ในการกำหนดปุ่มจะถูกส่งตามที่กำหนดเสมอ</string>
++    <string name="aa_key_group_select">OK / เลือก</string>
++    <string name="aa_key_group_direction">ลูกศรและปุ่มหมุน</string>
++    <string name="aa_key_group_back">ย้อนกลับ</string>
++    <string name="aa_key_group_phone">โทรและวางสาย</string>
++    <string name="aa_key_group_assistant">ผู้ช่วยเสียง</string>
++    <string name="aa_key_group_other">แป้นพิมพ์และปุ่มอื่นๆ</string>
+     <string name="volume_keys_to_phone">ส่งปุ่มปรับเสียงไปยังโทรศัพท์</string>
+     <string name="volume_keys_to_phone_summary">ปุ่มปรับเสียงจะปรับเสียงของโทรศัพท์ แทนเสียงของเครื่องนี้</string>
+     <string name="volume_keys_to_phone_help">ส่งปุ่มปรับเสียงของเครื่องนี้ไปยังโทรศัพท์ผ่าน Android Auto แทนการปรับระดับเสียงที่นี่ ใช้เมื่อโทรศัพท์เล่นเสียงเอง: ปิดตัวรับสัญญาณเสียง (Audio Sink) อยู่ หรือโทรศัพท์เชื่อมต่อกับบลูทูธของรถ\n\nทำงานขณะที่ Android Auto แสดงอยู่บนหน้าจอ และเฉพาะเมื่อ Android Auto บนโทรศัพท์ตอบสนองต่อปุ่มปรับเสียง</string>
+diff --git a/app/src/main/res/values-tr/strings.xml b/app/src/main/res/values-tr/strings.xml
+index bdf99f9a..042de85e 100644
+--- a/app/src/main/res/values-tr/strings.xml
++++ b/app/src/main/res/values-tr/strings.xml
+@@ -1153,7 +1153,18 @@
+     <string name="media_key_routing_auto">Otomatik</string>
+     <string name="media_key_routing_never">Hiçbir zaman</string>
+     <string name="media_key_routing_help">Her zaman: Sonraki, önceki ve oynat/duraklat tuşları her zaman Android Auto\'ya gönderilir. Tek basışta iki parça atlanmıyorsa bunu kullanın.\n\nOtomatik: Bu ana ünitenin telefonla Bluetooth medya bağlantısı olduğu sürece tuşları göndermez, çünkü işlemi zaten bu bağlantı yapar. Tek basışta iki parça atlanıyorsa ve telefonunuz bu ana üniteyle eşleştirilmişse bunu seçin.\n\nHiçbir zaman: Tuşları hiç göndermez, tuşları Bluetooth\'a bırakır. Tek basışta iki parça atlanıyorsa ve telefonunuz bu ana üniteyle değil aracın kendi sistemiyle eşleştirilmişse bunu seçin; Otomatik mod bu bağlantıyı algılayamaz.</string>
+-    <string name="media_key_routing_hint_common">Yalnızca medya tuşları etkilenir. Döner kumandalar, yön tuşları, Geri ve Enter her zaman Android Auto\'ya iletilir.</string>
++    <string name="media_key_routing_hint_common">Yalnızca medya tuşları etkilenir. Diğer tuşların kendi ayarı vardır: Tuşları Android Auto\'ya gönder.</string>
++    <string name="aa_key_groups">Tuşları Android Auto\'ya gönder</string>
++    <string name="aa_key_groups_all">Tümü</string>
++    <string name="aa_key_groups_none">Hiçbiri</string>
++    <string name="aa_key_groups_except">%1$s hariç tümü</string>
++    <string name="aa_key_groups_help">Bu ünitenin hangi tuşlarının Android Auto\'ya ulaşacağını seçer. Bir grubun işaretini kaldırırsanız o tuşlar Android Auto\'ya gönderilmez. Örneğin direksiyondaki OK veya Geri aracın kendi sistemini de kullanıyorsa ve Android Auto istemediğiniz şeyleri seçiyorsa.\n\nMedya tuşlarının üstte, ses tuşlarının altta kendi ayarı vardır. Tuş atamalarında atanmış bir tuş her zaman atandığı gibi gönderilir.</string>
++    <string name="aa_key_group_select">OK / Seç</string>
++    <string name="aa_key_group_direction">Yön tuşları ve döner düğme</string>
++    <string name="aa_key_group_back">Geri</string>
++    <string name="aa_key_group_phone">Arama ve kapatma</string>
++    <string name="aa_key_group_assistant">Sesli asistan</string>
++    <string name="aa_key_group_other">Klavye ve diğer tuşlar</string>
+     <string name="volume_keys_to_phone">Ses düğmelerini telefona gönder</string>
+     <string name="volume_keys_to_phone_summary">Ses düğmeleri bu ünitenin değil, telefonun sesini değiştirir.</string>
+     <string name="volume_keys_to_phone_help">Bu ünitenin ses düğmelerini, sesi burada değiştirmek yerine Android Auto üzerinden telefona gönderir. Sesi telefonun kendisi çalıyorsa kullanın: Ses alıcı (Audio Sink) kapalıysa veya telefon aracın Bluetooth\'una bağlıysa.\n\nAndroid Auto ekrandayken ve yalnızca telefondaki Android Auto ses tuşlarına yanıt veriyorsa çalışır.</string>
+diff --git a/app/src/main/res/values-uk/strings.xml b/app/src/main/res/values-uk/strings.xml
+index ea291617..49680fe0 100644
+--- a/app/src/main/res/values-uk/strings.xml
++++ b/app/src/main/res/values-uk/strings.xml
+@@ -1161,7 +1161,18 @@
+     <string name="media_key_routing_auto">Автоматично</string>
+     <string name="media_key_routing_never">Ніколи</string>
+     <string name="media_key_routing_help">Завжди: Кнопки «Наступний», «Попередній» і «Відтворити/Пауза» завжди надсилаються в Android Auto. Використовуйте цей режим, якщо одне натискання не пропускає два треки.\n\nАвтоматично: Не надсилає їх, поки ця магнітола має з’єднання Bluetooth для медіа з телефоном, бо це з’єднання вже виконує дію. Виберіть цей режим, якщо одне натискання пропускає два треки, а телефон спарено з цією магнітолою.\n\nНіколи: Ніколи не надсилає їх, залишаючи кнопки для Bluetooth. Виберіть цей режим, якщо одне натискання пропускає два треки, а телефон спарено з власною системою автомобіля, а не з цією магнітолою: режим «Автоматично» не може виявити таке з’єднання.</string>
+-    <string name="media_key_routing_hint_common">Це стосується лише медіакнопок. Поворотні контролери, D-pad, «Назад» і Enter завжди надходять до Android Auto.</string>
++    <string name="media_key_routing_hint_common">Це стосується лише медіакнопок. Інші кнопки мають власне налаштування: «Надсилати кнопки в Android Auto».</string>
++    <string name="aa_key_groups">Надсилати кнопки в Android Auto</string>
++    <string name="aa_key_groups_all">Усі</string>
++    <string name="aa_key_groups_none">Жодні</string>
++    <string name="aa_key_groups_except">Усі, крім: %1$s</string>
++    <string name="aa_key_groups_help">Які кнопки цього пристрою доходять до Android Auto. Зніміть позначку з групи, щоб її кнопки не потрапляли в Android Auto, наприклад коли OK або «Назад» на кермі керують і штатною системою авто, а Android Auto випадково щось вибирає.\n\nМедіакнопки мають власне налаштування вище, кнопки гучності — нижче. Кнопка, призначена в розкладці кнопок, завжди надсилається так, як призначено.</string>
++    <string name="aa_key_group_select">OK / Вибір</string>
++    <string name="aa_key_group_direction">Стрілки й поворотний регулятор</string>
++    <string name="aa_key_group_back">Назад</string>
++    <string name="aa_key_group_phone">Виклик і завершення</string>
++    <string name="aa_key_group_assistant">Голосовий асистент</string>
++    <string name="aa_key_group_other">Клавіатура й інші кнопки</string>
+     <string name="volume_keys_to_phone">Надсилати кнопки гучності на телефон</string>
+     <string name="volume_keys_to_phone_summary">Кнопки гучності змінюють гучність телефона, а не цього пристрою.</string>
+     <string name="volume_keys_to_phone_help">Надсилає кнопки гучності цього пристрою на телефон через Android Auto замість зміни гучності тут. Використовуйте, коли звук відтворює сам телефон: Аудіоприймач вимкнено або телефон підключено до Bluetooth автомобіля.\n\nПрацює, поки Android Auto на екрані, і лише якщо Android Auto на телефоні реагує на клавіші гучності.</string>
+diff --git a/app/src/main/res/values-vi/strings.xml b/app/src/main/res/values-vi/strings.xml
+index 502392ba..60655e02 100644
+--- a/app/src/main/res/values-vi/strings.xml
++++ b/app/src/main/res/values-vi/strings.xml
+@@ -1160,7 +1160,18 @@
+     <string name="media_key_routing_auto">Tự động</string>
+     <string name="media_key_routing_never">Không bao giờ</string>
+     <string name="media_key_routing_help">Luôn luôn: Phím chuyển bài tiếp theo, quay lại và phát/tạm dừng luôn được gửi tới Android Auto. Hãy dùng chế độ này, trừ khi một lần bấm làm nhảy qua hai bài.\n\nTự động: Ngừng gửi các phím này khi đầu máy có kết nối âm thanh Bluetooth với điện thoại, vì kết nối đó đã thực hiện thao tác rồi. Hãy chọn chế độ này nếu một lần bấm nhảy qua hai bài và điện thoại của bạn đã ghép nối với đầu máy này.\n\nKhông bao giờ: Không bao giờ gửi các phím này, để Bluetooth xử lý. Hãy chọn chế độ này nếu một lần bấm nhảy qua hai bài và điện thoại của bạn được ghép nối với hệ thống của chính xe thay vì đầu máy này, vì chế độ Tự động không phát hiện được kết nối đó.</string>
+-    <string name="media_key_routing_hint_common">Chỉ các phím đa phương tiện bị ảnh hưởng. Núm xoay, D-pad, phím Quay lại và phím Enter luôn được gửi tới Android Auto.</string>
++    <string name="media_key_routing_hint_common">Chỉ các phím đa phương tiện bị ảnh hưởng. Các phím khác có cài đặt riêng: Gửi phím tới Android Auto.</string>
++    <string name="aa_key_groups">Gửi phím tới Android Auto</string>
++    <string name="aa_key_groups_all">Tất cả</string>
++    <string name="aa_key_groups_none">Không có</string>
++    <string name="aa_key_groups_except">Tất cả trừ %1$s</string>
++    <string name="aa_key_groups_help">Chọn phím nào của máy này được gửi tới Android Auto. Bỏ chọn một nhóm để các phím của nhóm đó không tới Android Auto, ví dụ khi phím OK hoặc Quay lại trên vô lăng cũng điều khiển hệ thống gốc của xe và Android Auto chọn nhầm.\n\nPhím đa phương tiện có cài đặt riêng ở trên, phím âm lượng ở dưới. Phím đã gán trong phần gán phím luôn được gửi đúng như đã gán.</string>
++    <string name="aa_key_group_select">OK / Chọn</string>
++    <string name="aa_key_group_direction">Phím mũi tên và núm xoay</string>
++    <string name="aa_key_group_back">Quay lại</string>
++    <string name="aa_key_group_phone">Gọi và kết thúc</string>
++    <string name="aa_key_group_assistant">Trợ lý giọng nói</string>
++    <string name="aa_key_group_other">Bàn phím và phím khác</string>
+     <string name="volume_keys_to_phone">Gửi phím âm lượng tới điện thoại</string>
+     <string name="volume_keys_to_phone_summary">Phím âm lượng chỉnh âm lượng điện thoại thay vì thiết bị này.</string>
+     <string name="volume_keys_to_phone_help">Gửi phím âm lượng của thiết bị này tới điện thoại qua Android Auto thay vì chỉnh âm lượng tại đây. Dùng khi điện thoại tự phát âm thanh: Nhận âm thanh trên đầu máy đang tắt, hoặc điện thoại kết nối với Bluetooth của xe.\n\nChỉ hoạt động khi Android Auto đang hiển thị trên màn hình, và chỉ khi Android Auto trên điện thoại phản hồi phím âm lượng.</string>
+diff --git a/app/src/main/res/values-zh-rCN/strings.xml b/app/src/main/res/values-zh-rCN/strings.xml
+index 39ea0f15..0910865b 100644
+--- a/app/src/main/res/values-zh-rCN/strings.xml
++++ b/app/src/main/res/values-zh-rCN/strings.xml
+@@ -1156,7 +1156,18 @@
+     <string name="media_key_routing_auto">自动</string>
+     <string name="media_key_routing_never">从不</string>
+     <string name="media_key_routing_help">始终：上一首、下一首和播放/暂停始终发送到 Android Auto。除非按一次会跳过两首曲目，否则请使用此项。\n\n自动：当此车机与手机建立了蓝牙媒体连接时，不再发送这些按键，因为该连接已经执行了相应操作。如果按一次会跳过两首曲目，且手机已与此车机配对，请选择此项。\n\n从不：从不发送这些按键，交由蓝牙处理。如果按一次会跳过两首曲目，且手机配对的是车辆自带系统而非此车机，请选择此项（“自动”无法检测到该连接）。</string>
+-    <string name="media_key_routing_hint_common">仅影响媒体按键。旋钮控制器、方向键、返回键和确认键始终会传到 Android Auto。</string>
++    <string name="media_key_routing_hint_common">仅影响媒体按键。其他按键有单独的设置：将按键发送到 Android Auto。</string>
++    <string name="aa_key_groups">将按键发送到 Android Auto</string>
++    <string name="aa_key_groups_all">全部</string>
++    <string name="aa_key_groups_none">无</string>
++    <string name="aa_key_groups_except">除%1$s外全部</string>
++    <string name="aa_key_groups_help">选择本机的哪些按键会传到 Android Auto。取消勾选某一组后，该组按键不会发送到 Android Auto。例如方向盘上的确认或返回键同时操作原车系统，导致 Android Auto 误选内容时使用。\n\n媒体按键使用上方的设置，音量键使用下方的设置。在按键映射中指定的按键始终按指定方式发送。</string>
++    <string name="aa_key_group_select">确认 / 选择</string>
++    <string name="aa_key_group_direction">方向键和旋钮</string>
++    <string name="aa_key_group_back">返回</string>
++    <string name="aa_key_group_phone">接听和挂断</string>
++    <string name="aa_key_group_assistant">语音助手</string>
++    <string name="aa_key_group_other">键盘和其他按键</string>
+     <string name="volume_keys_to_phone">将音量按键发送到手机</string>
+     <string name="volume_keys_to_phone_summary">音量按键调节手机的音量，而不是本车机的音量。</string>
+     <string name="volume_keys_to_phone_help">将此车机的音量按键通过 Android Auto 发送到手机，而不是在这里调节音量。适用于由手机自己播放声音的情况：音频接收器已关闭，或手机连接的是汽车的蓝牙。\n\n仅在 Android Auto 显示在屏幕上时有效，并且需要手机上的 Android Auto 响应音量键。</string>
+diff --git a/app/src/main/res/values-zh-rTW/strings.xml b/app/src/main/res/values-zh-rTW/strings.xml
+index 6e3db9f4..75374d48 100644
+--- a/app/src/main/res/values-zh-rTW/strings.xml
++++ b/app/src/main/res/values-zh-rTW/strings.xml
+@@ -1156,7 +1156,18 @@
+     <string name="media_key_routing_auto">自動</string>
+     <string name="media_key_routing_never">永不</string>
+     <string name="media_key_routing_help">一律：下一首、上一首和播放／暫停一律會傳送至 Android Auto。除非按一下會跳過兩首歌，否則請使用此選項。\n\n自動：當這台車機與手機之間已有藍牙媒體連線時，會停止傳送這些按鍵，因為該連線本身已會執行動作。如果按一下會跳過兩首歌，且手機已與這台車機配對，請選擇此項。\n\n永不：永不傳送這些按鍵，改由藍牙處理。如果按一下會跳過兩首歌，且手機是與車輛內建系統配對，而非與這台車機配對，請選擇此項。「自動」無法偵測到該連線。</string>
+-    <string name="media_key_routing_hint_common">只會影響媒體按鍵。旋鈕控制器、方向鍵、返回鍵和確認鍵一律會傳送至 Android Auto。</string>
++    <string name="media_key_routing_hint_common">只會影響媒體按鍵。其他按鍵有各自的設定：將按鍵傳送至 Android Auto。</string>
++    <string name="aa_key_groups">將按鍵傳送至 Android Auto</string>
++    <string name="aa_key_groups_all">全部</string>
++    <string name="aa_key_groups_none">無</string>
++    <string name="aa_key_groups_except">除%1$s外全部</string>
++    <string name="aa_key_groups_help">選擇本機的哪些按鍵會傳送至 Android Auto。取消勾選某一組後，該組按鍵不會傳送至 Android Auto。例如方向盤上的確認或返回鍵同時操作原廠系統，導致 Android Auto 誤選內容時使用。\n\n媒體按鍵使用上方的設定，音量鍵使用下方的設定。在按鍵對應中指定的按鍵一律依指定方式傳送。</string>
++    <string name="aa_key_group_select">確認 / 選擇</string>
++    <string name="aa_key_group_direction">方向鍵和旋鈕</string>
++    <string name="aa_key_group_back">返回</string>
++    <string name="aa_key_group_phone">接聽和掛斷</string>
++    <string name="aa_key_group_assistant">語音助理</string>
++    <string name="aa_key_group_other">鍵盤和其他按鍵</string>
+     <string name="volume_keys_to_phone">將音量按鍵傳送至手機</string>
+     <string name="volume_keys_to_phone_summary">音量按鍵調整手機的音量，而不是本車機的音量。</string>
+     <string name="volume_keys_to_phone_help">將這台車機的音量按鍵透過 Android Auto 傳送至手機，而不是在這裡調整音量。適用於由手機自行播放聲音的情況：音訊接收器已關閉，或手機連接的是汽車的藍牙。\n\n僅在 Android Auto 顯示於螢幕上時有效，且需手機上的 Android Auto 會回應音量鍵。</string>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 42ee47c4..334b323c 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -784,7 +784,18 @@
+     <string name="media_key_routing_auto">Automatic</string>
+     <string name="media_key_routing_never">Never</string>
+     <string name="media_key_routing_help">Always: Next, previous and play/pause are always sent to Android Auto. Use this unless one press skips two tracks.\n\nAutomatic: Stops sending them while this headunit has a Bluetooth media connection to the phone, because that connection already performs the action. Choose this if one press skips two tracks and your phone is paired to this headunit.\n\nNever: Never sends them, leaving the buttons to Bluetooth. Choose this if one press skips two tracks and your phone is paired to the car\'s own system rather than to this headunit — Automatic cannot detect that connection.</string>
+-    <string name="media_key_routing_hint_common">Only the media buttons are affected. Rotary controllers, D-pad, Back and Enter always reach Android Auto.</string>
++    <string name="media_key_routing_hint_common">Only the media buttons are affected. The other keys have their own setting: Send Keys To Android Auto.</string>
++    <string name="aa_key_groups">Send Keys To Android Auto</string>
++    <string name="aa_key_groups_all">All</string>
++    <string name="aa_key_groups_none">None</string>
++    <string name="aa_key_groups_except">All except %1$s</string>
++    <string name="aa_key_groups_help">Which of this unit\'s keys reach Android Auto. Untick a group to keep its keys away from Android Auto, for example when the steering wheel\'s OK or Back also drives the car\'s own system and Android Auto selects things you did not mean to.\n\nMedia buttons have their own setting above, and volume buttons the one below. A key bound in the keymap is always sent as bound.</string>
++    <string name="aa_key_group_select">OK / Select</string>
++    <string name="aa_key_group_direction">Arrows and rotary knob</string>
++    <string name="aa_key_group_back">Back</string>
++    <string name="aa_key_group_phone">Call and hang up</string>
++    <string name="aa_key_group_assistant">Voice assistant</string>
++    <string name="aa_key_group_other">Keyboard and other keys</string>
+     <string name="volume_keys_to_phone">Send Volume Buttons To The Phone</string>
+     <string name="volume_keys_to_phone_summary">Volume buttons change the phone\'s volume, not this unit\'s.</string>
+     <string name="volume_keys_to_phone_help">Sends this headunit\'s volume buttons to the phone through Android Auto instead of changing the volume here. Use it when the phone plays the sound itself: Audio Sink off, or the phone connected to the car\'s Bluetooth.\n\nWorks while Android Auto is on screen, and only if the phone\'s Android Auto acts on volume keys.</string>
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/input/AaKeyGroupPolicyTest.kt b/app/src/test/java/com/andrerinas/openheadunit/input/AaKeyGroupPolicyTest.kt
+new file mode 100644
+index 00000000..2d575937
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/input/AaKeyGroupPolicyTest.kt
+@@ -0,0 +1,82 @@
++package com.andrerinas.openheadunit.input
++
++import android.view.KeyEvent
++import com.andrerinas.openheadunit.input.AaKeyGroupPolicy.Group
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class AaKeyGroupPolicyTest {
++
++    @Test
++    fun `nothing held back sends every key, as before the setting existed`() {
++        for (code in KeyCode.supported + listOf(KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_ENDCALL)) {
++            assertTrue("$code", AaKeyGroupPolicy.shouldForward(code, emptySet()))
++        }
++    }
++
++    @Test
++    fun `a steering wheel's OK is held back with the select group, in every spelling`() {
++        val heldBack = setOf(Group.SELECT)
++        for (code in listOf(KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) {
++            assertEquals(Group.SELECT, AaKeyGroupPolicy.groupOf(code))
++            assertFalse("$code", AaKeyGroupPolicy.shouldForward(code, heldBack))
++        }
++        // and nothing else goes with it
++        assertTrue(AaKeyGroupPolicy.shouldForward(KeyEvent.KEYCODE_DPAD_UP, heldBack))
++        assertTrue(AaKeyGroupPolicy.shouldForward(KeyEvent.KEYCODE_BACK, heldBack))
++    }
++
++    @Test
++    fun `each key lands in its group`() {
++        val expected = mapOf(
++            KeyEvent.KEYCODE_DPAD_UP to Group.DIRECTION, KeyEvent.KEYCODE_DPAD_DOWN to Group.DIRECTION,
++            KeyEvent.KEYCODE_DPAD_LEFT to Group.DIRECTION, KeyEvent.KEYCODE_DPAD_RIGHT to Group.DIRECTION,
++            // the rotary controller's turns
++            KeyEvent.KEYCODE_SOFT_LEFT to Group.DIRECTION, KeyEvent.KEYCODE_SOFT_RIGHT to Group.DIRECTION,
++            KeyEvent.KEYCODE_BACK to Group.BACK, KeyEvent.KEYCODE_ESCAPE to Group.BACK,
++            KeyEvent.KEYCODE_CALL to Group.PHONE, KeyEvent.KEYCODE_ENDCALL to Group.PHONE,
++            KeyEvent.KEYCODE_HEADSETHOOK to Group.PHONE,
++            KeyEvent.KEYCODE_SEARCH to Group.ASSISTANT, KeyEvent.KEYCODE_VOICE_ASSIST to Group.ASSISTANT,
++            KeyEvent.KEYCODE_ASSIST to Group.ASSISTANT,
++            KeyEvent.KEYCODE_A to Group.OTHER, KeyEvent.KEYCODE_HOME to Group.OTHER,
++            KeyEvent.KEYCODE_MUSIC to Group.OTHER, KeyEvent.KEYCODE_TAB to Group.OTHER,
++        )
++        for ((code, group) in expected) assertEquals("$code", group, AaKeyGroupPolicy.groupOf(code))
++    }
++
++    @Test
++    fun `media and volume keys belong to their own settings and are never held back here`() {
++        val owned = listOf(
++            KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
++            KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP,
++            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_MEDIA_REWIND,
++            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE,
++        )
++        val everything = Group.values().toSet()
++        for (code in owned) {
++            assertNull("$code", AaKeyGroupPolicy.groupOf(code))
++            assertTrue("$code", AaKeyGroupPolicy.shouldForward(code, everything))
++        }
++    }
++
++    @Test
++    fun `holding every group back still leaves media and volume alone, and stops the rest`() {
++        val everything = Group.values().toSet()
++        assertFalse(AaKeyGroupPolicy.shouldForward(KeyEvent.KEYCODE_DPAD_CENTER, everything))
++        assertFalse(AaKeyGroupPolicy.shouldForward(KeyEvent.KEYCODE_Z, everything))
++        assertTrue(AaKeyGroupPolicy.shouldForward(KeyEvent.KEYCODE_MEDIA_NEXT, everything))
++    }
++
++    @Test
++    fun `stored ids never move, and unknown ones are dropped rather than guessed at`() {
++        assertEquals(listOf("select", "direction", "back", "phone", "assistant", "other"), Group.values().map { it.id })
++        assertEquals(emptySet<Group>(), AaKeyGroupPolicy.decode(null))
++        assertEquals(setOf(Group.SELECT), AaKeyGroupPolicy.decode(setOf("select", "steering-wheel-v2")))
++        for (g in Group.values()) {
++            assertEquals(setOf(g), AaKeyGroupPolicy.decode(AaKeyGroupPolicy.encode(setOf(g))))
++        }
++    }
++}
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/main/AaKeyGroupsDialogTest.kt b/app/src/test/java/com/andrerinas/openheadunit/main/AaKeyGroupsDialogTest.kt
+new file mode 100644
+index 00000000..3f31ca79
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/main/AaKeyGroupsDialogTest.kt
+@@ -0,0 +1,78 @@
++package com.andrerinas.openheadunit.main
++
++import android.app.Application
++import android.widget.ListView
++import android.widget.TextView
++import androidx.appcompat.app.AppCompatActivity
++import com.andrerinas.openheadunit.R
++import com.google.android.material.dialog.MaterialAlertDialogBuilder
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.Robolectric
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.RuntimeEnvironment
++import org.robolectric.Shadows.shadowOf
++import org.robolectric.annotation.Config
++import org.robolectric.annotation.GraphicsMode
++import android.os.Looper
++
++/**
++ * The Send Keys To Android Auto choice, as the settings screen shows it (the same builder and
++ * theme): every group's name is shown whole in every language, on a portrait phone and on a
++ * small head unit.
++ */
++@RunWith(RobolectricTestRunner::class)
++@GraphicsMode(GraphicsMode.Mode.NATIVE)
++@Config(application = Application::class, sdk = [34])
++class AaKeyGroupsDialogTest {
++
++    private val locales = listOf("", "ar", "cs", "de", "es", "es-rES", "fr", "hi", "hu", "in", "it", "ja", "ka", "ko",
++        "nl", "pl", "pt-rBR", "pt-rPT", "ro", "ru", "th", "tr", "uk", "vi", "zh-rCN", "zh-rTW")
++
++    private val groups = listOf(R.string.aa_key_group_select, R.string.aa_key_group_direction, R.string.aa_key_group_back,
++        R.string.aa_key_group_phone, R.string.aa_key_group_assistant, R.string.aa_key_group_other)
++
++    private fun assertWholeIn(screen: String) {
++        for (locale in locales) {
++            RuntimeEnvironment.setQualifiers(if (locale.isEmpty()) screen else "$locale-$screen")
++            val controller = Robolectric.buildActivity(AppCompatActivity::class.java)
++            controller.get().setTheme(R.style.AppTheme)
++            val activity = controller.setup().get()
++            try {
++                val labels = groups.map { activity.getString(it) }.toTypedArray()
++                val dialog = MaterialAlertDialogBuilder(activity, R.style.DarkAlertDialog)
++                    .setTitle(R.string.aa_key_groups)
++                    .setMultiChoiceItems(labels, BooleanArray(labels.size) { true }) { _, _, _ -> }
++                    .setPositiveButton(android.R.string.ok, null)
++                    .show()
++                shadowOf(Looper.getMainLooper()).idle()
++                val list = dialog.listView as ListView
++                val where = "${locale.ifEmpty { "en" }} on $screen"
++                // A short screen scrolls the list: check what shows, then scroll to the end and check again.
++                val seen = mutableSetOf<String>()
++                for (position in listOf(0, labels.size - 1)) {
++                    list.setSelection(position)
++                    shadowOf(Looper.getMainLooper()).idle()
++                    for (i in 0 until list.childCount) {
++                        val row = list.getChildAt(i) as TextView
++                        val layout = row.layout
++                        val whole = layout != null &&
++                            layout.getLineEnd(layout.lineCount - 1) == row.text.length &&
++                            (0 until layout.lineCount).none { layout.getEllipsisCount(it) > 0 }
++                        assertTrue("$where: '${row.text}' is cut", whole)
++                        seen.add(row.text.toString())
++                    }
++                }
++                assertEquals(where, labels.toSet(), seen)
++                dialog.dismiss()
++            } finally {
++                controller.destroy()
++            }
++        }
++    }
++
++    @Test fun `a portrait phone`() = assertWholeIn("w360dp-h780dp-port-xxhdpi")
++    @Test fun `an 800x450 head unit`() = assertWholeIn("w533dp-h300dp-land-hdpi")
++}
