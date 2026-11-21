@@ -207,6 +207,8 @@ object SettingsBackupManager {
         // Same reasoning: read through MediaKeyRoutingPolicy.Mode.fromInt, which falls back to
         // ALWAYS for anything out of range.
         "media-key-routing" to ValueType.INT,
+        // Group ids, read through AaKeyGroupPolicy.decode, which drops any it does not know.
+        "aa-key-groups-held-back" to ValueType.STRING_SET,
         "volume-keys-to-phone" to ValueType.BOOLEAN,
         // Enum-backed like playback-focus-mode: read through SpeedVolumePolicy.Mode.fromInt, which
         // falls back to OFF for anything out of range.

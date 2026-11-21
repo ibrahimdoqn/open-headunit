@@ -23,6 +23,7 @@ import com.andrerinas.openheadunit.main.FavoriteTarget
 import com.andrerinas.openheadunit.main.HomePagesPolicy
 import com.andrerinas.openheadunit.main.HomeSurfaceOpacityPolicy
 import com.andrerinas.openheadunit.main.HomeWidgetsPolicy
+import com.andrerinas.openheadunit.input.AaKeyGroupPolicy
 import com.andrerinas.openheadunit.input.MediaKeyRoutingPolicy
 import com.andrerinas.openheadunit.location.SpeedVolumePolicy
 import com.andrerinas.openheadunit.view.PerformanceOverlayField
@@ -1423,6 +1424,13 @@ class Settings(private val context: Context) {
             prefs.getInt("media-key-routing", MediaKeyRoutingPolicy.Mode.ALWAYS.value)
         )
         set(value) { prefs.edit().putInt("media-key-routing", value.value).apply() }
+
+    // The key groups held back from Android Auto when no binding speaks for the key, such as a
+    // steering wheel's OK that drives the car's own system. See AaKeyGroupPolicy. Stored as the
+    // groups held back, so an unset preference, and any group added later, sends everything.
+    var aaKeyGroupsHeldBack: Set<AaKeyGroupPolicy.Group>
+        get() = AaKeyGroupPolicy.decode(prefs.getStringSet("aa-key-groups-held-back", null))
+        set(value) { prefs.edit().putStringSet("aa-key-groups-held-back", AaKeyGroupPolicy.encode(value)).apply() }
 
     // Whether the hardware volume buttons go to the phone through Android Auto instead of changing
     // this head unit's own volume. For a phone that keeps its audio (Audio Sink off, or playing to
