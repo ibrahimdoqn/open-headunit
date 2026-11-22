@@ -1,0 +1,171 @@
+From 7405274184a2ed1afe70c4de1f2f62c06ae8b839 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 17 Nov 2026 18:08:38 +0000
+Subject: [PATCH 1/2] Add a workflow that builds a release APK signed with a
+ personal key
+
+The key comes from two repository secrets and never enters the
+repository; each run publishes the APK as a pre-release. SIGNING.md
+says how to set it up.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ .github/workflows/personal-signed-apk.yml | 99 +++++++++++++++++++++++
+ SIGNING.md                                | 41 ++++++++++
+ 2 files changed, 140 insertions(+)
+ create mode 100644 .github/workflows/personal-signed-apk.yml
+ create mode 100644 SIGNING.md
+
+diff --git a/.github/workflows/personal-signed-apk.yml b/.github/workflows/personal-signed-apk.yml
+new file mode 100644
+index 00000000..504ed65b
+--- /dev/null
++++ b/.github/workflows/personal-signed-apk.yml
+@@ -0,0 +1,99 @@
++name: Personal signed APK
++
++# Builds the github flavor as a release APK signed with your own key, so every build installs over
++# the previous one and keeps the app's settings. The key never lives in the repository: it comes
++# from two repository secrets (Settings -> Secrets and variables -> Actions):
++#   HEADUNIT_KEYSTORE_BASE64   the .jks file, base64-encoded
++#   HEADUNIT_KEYSTORE_PASSWORD its password (store and key share it)
++# Each run attaches the APK to a pre-release named personal-<run number>, easy to open on a phone.
++
++on:
++  push:
++    branches-ignore: [main]
++  workflow_dispatch:
++
++permissions:
++  contents: write
++
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
++jobs:
++  build:
++    name: Assemble signed github release APK
++    # Only in a fork that has the key; never upstream.
++    if: github.repository != 'andreknieriem/open-headunit'
++    runs-on: ubuntu-latest
++
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Check the signing secrets
++        env:
++          KEYSTORE_BASE64: ${{ secrets.HEADUNIT_KEYSTORE_BASE64 }}
++          KEYSTORE_PASSWORD: ${{ secrets.HEADUNIT_KEYSTORE_PASSWORD }}
++        run: |
++          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
++            echo "::error::Add the HEADUNIT_KEYSTORE_BASE64 and HEADUNIT_KEYSTORE_PASSWORD repository secrets (see SIGNING.md)."
++            exit 1
++          fi
++
++      - name: Set up JDK 17
++        uses: actions/setup-java@v4
++        with:
++          distribution: temurin
++          java-version: "17"
++          cache: gradle
++
++      - name: Set up Android SDK
++        uses: android-actions/setup-android@v4
++        with:
++          packages: ''
++
++      - name: Install required SDK packages
++        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
++
++      - name: Restore the signing key
++        env:
++          KEYSTORE_BASE64: ${{ secrets.HEADUNIT_KEYSTORE_BASE64 }}
++        # app/build.gradle.kts reads headunit-release-key.jks from the repository root (git-ignored).
++        run: echo "$KEYSTORE_BASE64" | base64 --decode > headunit-release-key.jks
++
++      - name: Build signed release APK
++        env:
++          HEADUNIT_KEYSTORE_PASSWORD: ${{ secrets.HEADUNIT_KEYSTORE_PASSWORD }}
++          HEADUNIT_KEY_PASSWORD: ${{ secrets.HEADUNIT_KEYSTORE_PASSWORD }}
++        run: |
++          chmod +x ./gradlew
++          ./gradlew :app:assembleGithubRelease --no-daemon --stacktrace
++
++      - name: Remove the signing key
++        if: always()
++        run: rm -f headunit-release-key.jks
++
++      - name: Check the APK is signed with the personal key
++        run: |
++          APK=$(ls app/build/outputs/apk/github/release/*.apk | head -1)
++          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | tee signer.txt
++          grep -q "CN=Open Headunit personal build" signer.txt || { echo "::error::The APK is not signed with the personal key"; exit 1; }
++
++      - name: Upload APK
++        uses: actions/upload-artifact@v4
++        with:
++          name: open-headunit-personal-signed
++          path: app/build/outputs/apk/github/release/*.apk
++          if-no-files-found: error
++
++      - name: Publish as a pre-release
++        env:
++          GH_TOKEN: ${{ github.token }}
++        run: |
++          APK=$(ls app/build/outputs/apk/github/release/*.apk | head -1)
++          TAG="personal-${{ github.run_number }}"
++          cp "$APK" "open-headunit-${TAG}.apk"
++          gh release create "$TAG" "open-headunit-${TAG}.apk" \
++            --target "${{ github.sha }}" --prerelease \
++            --title "Personal build ${{ github.run_number }} (${GITHUB_REF_NAME})" \
++            --notes "Signed with the personal key. Commit ${{ github.sha }}."
+diff --git a/SIGNING.md b/SIGNING.md
+new file mode 100644
+index 00000000..71ccef05
+--- /dev/null
++++ b/SIGNING.md
+@@ -0,0 +1,41 @@
++# Kendi imzanızla APK (GitHub Actions)
++
++`.github/workflows/personal-signed-apk.yml`, `main` dışındaki her dala push yapıldığında
++uygulamayı **sizin anahtarınızla imzalı** release APK olarak derler. Her derleme bir öncekinin
++üzerine kurulur ve ayarlar korunur. APK, deponun **Releases** sayfasına `personal-<numara>`
++adıyla ön sürüm olarak eklenir; telefondan ya da üniteden oradan indirebilirsiniz.
++
++Anahtar depoda **yoktur**. GitHub'daki iki gizli değişkenden (secret) okunur.
++
++## Bir kerelik kurulum
++
++1. GitHub'da depo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
++2. İki secret ekleyin:
++
++   | Name | Value |
++   |---|---|
++   | `HEADUNIT_KEYSTORE_BASE64` | `HEADUNIT_KEYSTORE_BASE64.txt` dosyasının tüm içeriği (tek satır) |
++   | `HEADUNIT_KEYSTORE_PASSWORD` | `HEADUNIT_KEYSTORE_PASSWORD.txt` dosyasının içeriği |
++
++3. Depo → **Actions** sekmesi kapalıysa açın ("I understand my workflows, go ahead and enable them").
++4. **Actions** → **Personal signed APK** → **Run workflow** ile ilk derlemeyi başlatın
++   (ya da dala bir push yapın). Secret'lar yoksa iş akışı bunu söyleyerek durur.
++
++## İlk kurulumda bir kez
++
++Şimdiye kadar kurduğunuz debug APK'lar başka bir anahtarla imzalı. İmzalı sürümü ilk kez
++kurmadan önce mevcut uygulamayı **kaldırmanız** gerekir (ayarlar silinir; ayarlarda yedekleme
++varsa önce dışa aktarın). Sonraki tüm sürümler üzerine kurulur.
++
++## Anahtarı saklayın
++
++`headunit-release-key.jks` ve şifresini güvenli bir yerde (şifre yöneticisi, kişisel bulut)
++saklayın ve **kimseyle paylaşmayın**. Kaybederseniz yeni sürümler eskisinin üzerine kurulamaz;
++yeni anahtarla bir kez kaldırıp kurmanız gerekir. Secret'ları ekledikten sonra
++`.txt` dosyalarını cihazlarınızdan silebilirsiniz.
++
++## Upstream güncellenince
++
++Bu dalda orijinal uygulamaya eklenen tek şey bu belge ve iş akışı dosyası. Upstream'in yeni
++sürümünü dala birleştirip (`git merge upstream/main`) push yapmanız yeterli; secret'lar depoda
++kaldığı için imzalı APK kendiliğinden derlenir.
