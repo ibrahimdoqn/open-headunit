@@ -1,0 +1,132 @@
+From ee97ac956ac247a2cf0249acb6bab1b208f1400f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 22 Nov 2026 17:40:03 +0000
+Subject: [PATCH 3/3] Action picker: let the toolbar grow to fit both lines
+
+The action picker's toolbar shows two lines, the key or gesture and
+"Choose action", in a toolbar held to ?attr/actionBarSize. With a large
+system font, common on head units, the second line was cut in half
+(seen on a 1920x720 FYT unit on Android 10, which scales fonts
+linearly).
+
+The toolbar now wraps its content with the action bar's height as its
+minimum, plus a 4dp bottom padding for the title margin the toolbar
+leaves out of its own measuring once the two lines outgrow that minimum.
+At the normal font size it is 4px taller than before.
+
+ActionPickerToolbarTest lays the picker out on Android 11 (linear font
+scaling, like the Android 10 units) at font scales 1.0 to 1.5 on a
+1920x720 unit, an 800x450 unit and a portrait phone, and checks both
+lines are whole; it fails on the old layout.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ .../res/layout/fragment_action_picker.xml     |  8 +-
+ .../main/ActionPickerToolbarTest.kt           | 75 +++++++++++++++++++
+ 2 files changed, 82 insertions(+), 1 deletion(-)
+ create mode 100644 app/src/test/java/com/andrerinas/openheadunit/main/ActionPickerToolbarTest.kt
+
+diff --git a/app/src/main/res/layout/fragment_action_picker.xml b/app/src/main/res/layout/fragment_action_picker.xml
+index a091196c..fa0268da 100644
+--- a/app/src/main/res/layout/fragment_action_picker.xml
++++ b/app/src/main/res/layout/fragment_action_picker.xml
+@@ -12,10 +12,16 @@
+         android:background="?attr/colorSurface"
+         app:elevation="0dp">
+ 
++        <!-- Two lines, the key or gesture and "Choose action": grown to fit rather than held to
++             one action bar's height, which cut the second line with a large system font. The
++             bottom padding matches the toolbar's own 4dp title margin, which its measuring leaves
++             out once the two lines outgrow the minimum height. -->
+         <com.google.android.material.appbar.MaterialToolbar
+             android:id="@+id/toolbar"
+             android:layout_width="match_parent"
+-            android:layout_height="?attr/actionBarSize"
++            android:layout_height="wrap_content"
++            android:minHeight="?attr/actionBarSize"
++            android:paddingBottom="4dp"
+             app:navigationIcon="@drawable/ic_arrow_back_white"
+             app:navigationIconTint="?android:attr/textColorPrimary"
+             app:title="@string/action_picker_title"
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/main/ActionPickerToolbarTest.kt b/app/src/test/java/com/andrerinas/openheadunit/main/ActionPickerToolbarTest.kt
+new file mode 100644
+index 00000000..ab231d46
+--- /dev/null
++++ b/app/src/test/java/com/andrerinas/openheadunit/main/ActionPickerToolbarTest.kt
+@@ -0,0 +1,75 @@
++package com.andrerinas.openheadunit.main
++
++import android.app.Application
++import android.os.Looper
++import android.view.View
++import android.widget.TextView
++import androidx.appcompat.app.AppCompatActivity
++import com.andrerinas.openheadunit.R
++import com.andrerinas.openheadunit.input.InputAction
++import com.google.android.material.appbar.MaterialToolbar
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.Robolectric
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.RuntimeEnvironment
++import org.robolectric.Shadows.shadowOf
++import org.robolectric.annotation.Config
++import org.robolectric.annotation.GraphicsMode
++
++/**
++ * The action picker's toolbar holds two lines, the key and "Choose action". With a large system
++ * font a toolbar held to one action bar's height cut the second line on a head unit. Android 11
++ * scales fonts linearly, as the Android 10 units these run do; newer releases scale large text
++ * less and would hide the fault.
++ */
++@RunWith(RobolectricTestRunner::class)
++@GraphicsMode(GraphicsMode.Mode.NATIVE)
++@Config(application = Application::class, sdk = [30])
++class ActionPickerToolbarTest {
++
++    private fun assertBothLinesWhole(fontScale: Float) {
++        RuntimeEnvironment.setFontScale(fontScale)
++        val controller = Robolectric.buildActivity(AppCompatActivity::class.java)
++        controller.get().setTheme(R.style.AppTheme)
++        val activity = controller.setup().get()
++        try {
++            val fragment = ActionPickerFragment().apply {
++                arguments = ActionPickerFragment.args(
++                    requestKey = "k", tag = "66", title = "ENTER", current = InputAction.None,
++                    noneLabelResId = R.string.action_remove_binding, offersDoNothing = true,
++                )
++            }
++            activity.supportFragmentManager.beginTransaction().add(android.R.id.content, fragment).commitNow()
++            val root = activity.window.decorView
++            val dm = activity.resources.displayMetrics
++            root.measure(View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.EXACTLY),
++                View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.EXACTLY))
++            root.layout(0, 0, dm.widthPixels, dm.heightPixels)
++            shadowOf(Looper.getMainLooper()).idle()
++            val toolbar = fragment.requireView().findViewById<MaterialToolbar>(R.id.toolbar)
++            val lines = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.filterIsInstance<TextView>()
++            assertEquals("title and subtitle", 2, lines.size)
++            for (line in lines) {
++                val m = line.paint.fontMetricsInt
++                assertTrue("font $fontScale: '${line.text}' ends at ${line.bottom}, the toolbar at ${toolbar.height}",
++                    line.bottom <= toolbar.height)
++                assertTrue("font $fontScale: '${line.text}' is ${line.height}px for a ${m.descent - m.ascent}px line",
++                    line.height >= m.descent - m.ascent)
++            }
++        } finally {
++            controller.destroy()
++        }
++    }
++
++    @Test @Config(qualifiers = "w1920dp-h720dp-land-mdpi") fun `a 1920x720 unit at every font size`() =
++        listOf(1f, 1.15f, 1.3f, 1.5f).forEach { assertBothLinesWhole(it) }
++
++    @Test @Config(qualifiers = "w533dp-h300dp-land-hdpi") fun `an 800x450 unit with a large font`() =
++        assertBothLinesWhole(1.5f)
++
++    @Test @Config(qualifiers = "w411dp-h891dp-port-xxhdpi") fun `a portrait phone with a large font`() =
++        assertBothLinesWhole(1.5f)
++}
