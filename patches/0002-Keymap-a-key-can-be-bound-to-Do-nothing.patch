@@ -1,0 +1,838 @@
+From 7dbf2fe33a2e62564bfc854721a0f5a83a651cd5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 22 Nov 2026 17:10:43 +0000
+Subject: [PATCH 2/2] Keymap: a key can be bound to Do nothing
+
+A head unit's key handler often delivers presses that were never meant
+for the projection. On cars whose factory system keeps the steering
+wheel (an Audi MMI, for one), the wheel's OK still reaches this app and
+Android Auto selects whatever has focus. The keymap could not help: its
+"Remove binding" leaves the key unbound, and an unbound key goes on to
+Android Auto as itself.
+
+- InputAction.Ignore, stored as "ignore", offered in the keymap's action
+  picker as "Do nothing", right below "Remove binding". A key bound to it
+  goes nowhere on press or release, and the press is logged.
+- Keys only: the gestures' picker does not offer it, since a gesture's
+  "Disabled" already does nothing; a gesture that somehow holds it does
+  nothing as well.
+- An older build reads "ignore" as unbound, so a downgrade sends the key
+  again rather than doing anything unexpected.
+
+The keymap help says what Do nothing is for, in every locale.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WfvDdsw9pz4kqjTjiNxyCC
+---
+ CHANGELOG.md                                  |  1 +
+ .../openheadunit/aap/AapProjectionActivity.kt |  3 ++-
+ .../openheadunit/connection/CommManager.kt    |  6 ++++-
+ .../openheadunit/input/InputAction.kt         | 16 +++++++++++++-
+ .../openheadunit/main/ActionCatalog.kt        |  1 +
+ .../openheadunit/main/ActionPickerFragment.kt | 11 +++++++++-
+ .../openheadunit/main/KeymapFragment.kt       |  3 ++-
+ app/src/main/res/values-ar/strings.xml        |  3 ++-
+ app/src/main/res/values-cs/strings.xml        |  3 ++-
+ app/src/main/res/values-de/strings.xml        |  3 ++-
+ app/src/main/res/values-es-rES/strings.xml    |  3 ++-
+ app/src/main/res/values-es/strings.xml        |  3 ++-
+ app/src/main/res/values-fr/strings.xml        |  3 ++-
+ app/src/main/res/values-hi/strings.xml        |  3 ++-
+ app/src/main/res/values-hu/strings.xml        |  3 ++-
+ app/src/main/res/values-in/strings.xml        |  3 ++-
+ app/src/main/res/values-it/strings.xml        |  3 ++-
+ app/src/main/res/values-ja/strings.xml        |  3 ++-
+ app/src/main/res/values-ka/strings.xml        |  3 ++-
+ app/src/main/res/values-ko/strings.xml        |  3 ++-
+ app/src/main/res/values-nl/strings.xml        |  3 ++-
+ app/src/main/res/values-pl/strings.xml        |  3 ++-
+ app/src/main/res/values-pt-rBR/strings.xml    |  3 ++-
+ app/src/main/res/values-pt-rPT/strings.xml    |  3 ++-
+ app/src/main/res/values-ro/strings.xml        |  3 ++-
+ app/src/main/res/values-ru/strings.xml        |  3 ++-
+ app/src/main/res/values-th/strings.xml        |  3 ++-
+ app/src/main/res/values-tr/strings.xml        |  3 ++-
+ app/src/main/res/values-uk/strings.xml        |  3 ++-
+ app/src/main/res/values-vi/strings.xml        |  3 ++-
+ app/src/main/res/values-zh-rCN/strings.xml    |  3 ++-
+ app/src/main/res/values-zh-rTW/strings.xml    |  3 ++-
+ app/src/main/res/values/strings.xml           |  3 ++-
+ .../openheadunit/input/InputActionTest.kt     | 22 +++++++++++++++++++
+ 34 files changed, 110 insertions(+), 31 deletions(-)
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 0a0b1751..45623032 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -10,6 +10,7 @@
+ - Feat(home): move All Apps button to sidebar in launcher mode
+ - Display: reconnect in the remembered shape, and redraw instead of stretching when the screen turns, thanks to @tamer1an
+ - Feat(wifi): Headunit Server asks which network the phone and the unit share. On the phone's hotspot the search waits for the unit to join it, Connect over WiFi scans for the hotspot first, and the main card shows the WiFi network, band and signal; an optional automatic scan helps a slow unit join. The main button becomes a pill led by an icon
++- Feat(keymap): a key can be bound to "Do nothing", so a key meant for something else (a steering wheel's OK that drives the car's own system) never reaches Android Auto
+ 
+ ### 4.0.0
+ - New Homescreen, favorites under the card on 16:9 units, and drawer tabs for shortcuts, thanks to @andrecuellar
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/aap/AapProjectionActivity.kt b/app/src/main/java/com/andrerinas/openheadunit/aap/AapProjectionActivity.kt
+index 98df1836..c8d4b2f6 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/aap/AapProjectionActivity.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/aap/AapProjectionActivity.kt
+@@ -2490,7 +2490,8 @@ class AapProjectionActivity : SurfaceActivity(), IProjectionView.Callbacks, Vide
+ 
+     /** What a gesture does: the same choices a key binding has. */
+     private fun performTouchGesture(action: InputAction): Boolean = when (action) {
+-        InputAction.None -> false
++        // Ignore is never offered for a gesture; one that somehow holds it does nothing, like None.
++        InputAction.None, InputAction.Ignore -> false
+         is InputAction.Local -> performLocalAction(action.kind)
+         is InputAction.AaKey -> {
+             commManager.sendLogicalKey(action.keyCode, true, source = "gesture")
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/connection/CommManager.kt b/app/src/main/java/com/andrerinas/openheadunit/connection/CommManager.kt
+index 8656d868..715f7709 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/connection/CommManager.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/connection/CommManager.kt
+@@ -1348,6 +1348,10 @@ class CommManager(
+         val logicalCode = when (val resolution = KeyBindingPolicy.resolve(settings.keyBindings, keyCode, isPress)) {
+             is KeyBindingPolicy.Resolution.SendToAa -> resolution.logicalCode
+             is KeyBindingPolicy.Resolution.Swallow -> return
++            is KeyBindingPolicy.Resolution.Ignored -> {
++                if (isPress) AppLog.i("CommManager: Key $keyCode is bound to do nothing; not sent (src=$source)")
++                return
++            }
+             is KeyBindingPolicy.Resolution.Run -> {
+                 runBoundAction(resolution.action, keyCode)
+                 return
+@@ -1430,7 +1434,7 @@ class CommManager(
+         when (action) {
+             is InputAction.Local -> _localActions.tryEmit(action.kind)
+             is InputAction.LaunchApp -> AppLauncher.launch(context, action.target)
+-            is InputAction.AaKey, InputAction.None -> Unit
++            is InputAction.AaKey, InputAction.None, InputAction.Ignore -> Unit
+         }
+     }
+ 
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/input/InputAction.kt b/app/src/main/java/com/andrerinas/openheadunit/input/InputAction.kt
+index b93a9e19..6092cccd 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/input/InputAction.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/input/InputAction.kt
+@@ -22,8 +22,16 @@ enum class LocalAction(val id: String) {
+  * app.
+  */
+ sealed class InputAction {
++    /** Nothing bound: a key goes on to Android Auto as itself, a gesture does nothing. */
+     object None : InputAction()
+ 
++    /**
++     * A key that does nothing at all: it never reaches Android Auto. For a key the head unit
++     * delivers although it was meant for something else, such as a steering wheel's OK that drives
++     * the car's own system. Keys only; a gesture's [None] already does nothing.
++     */
++    object Ignore : InputAction()
++
+     /** A key sent to Android Auto, by the logical code [KeyCode.convert] understands. */
+     data class AaKey(val keyCode: Int) : InputAction()
+ 
+@@ -34,18 +42,20 @@ sealed class InputAction {
+ }
+ 
+ /**
+- * Stores an [InputAction] as one string: `none`, `key:85`, `local:dim`, or `app:` followed by the
++ * Stores an [InputAction] as one string: `none`, `ignore`, `key:85`, `local:dim`, or `app:` followed by the
+  * target the way [FavoriteAppsPolicy] stores a favorite slot. Anything unreadable decodes to
+  * [InputAction.None], so a corrupt value never triggers something unexpected.
+  */
+ object InputActionCodec {
+     private const val NONE = "none"
++    private const val IGNORE = "ignore"
+     private const val KEY = "key:"
+     private const val LOCAL = "local:"
+     private const val APP = "app:"
+ 
+     fun encode(action: InputAction): String = when (action) {
+         InputAction.None -> NONE
++        InputAction.Ignore -> IGNORE
+         is InputAction.AaKey -> KEY + action.keyCode
+         is InputAction.Local -> LOCAL + action.kind.id
+         is InputAction.LaunchApp ->
+@@ -56,6 +66,7 @@ object InputActionCodec {
+     fun decode(stored: String?): InputAction {
+         if (stored == null) return InputAction.None
+         return when {
++            stored == IGNORE -> InputAction.Ignore
+             stored.startsWith(KEY) ->
+                 stored.removePrefix(KEY).toIntOrNull()?.let { InputAction.AaKey(it) } ?: InputAction.None
+             stored.startsWith(LOCAL) ->
+@@ -90,11 +101,14 @@ object KeyBindingPolicy {
+         data class Run(val action: InputAction) : Resolution()
+         /** Bound to a one-shot action, but this is its press: swallowed. */
+         object Swallow : Resolution()
++        /** Bound to [InputAction.Ignore]: press and release both go nowhere. */
++        object Ignored : Resolution()
+     }
+ 
+     fun resolve(bindings: Map<Int, InputAction>, keyCode: Int, isPress: Boolean): Resolution =
+         when (val action = bindings[keyCode]) {
+             null, InputAction.None -> Resolution.Unbound
++            InputAction.Ignore -> Resolution.Ignored
+             is InputAction.AaKey -> Resolution.SendToAa(action.keyCode)
+             is InputAction.Local, is InputAction.LaunchApp ->
+                 if (isPress) Resolution.Swallow else Resolution.Run(action)
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/ActionCatalog.kt b/app/src/main/java/com/andrerinas/openheadunit/main/ActionCatalog.kt
+index 484e8b12..fb4e1b05 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/ActionCatalog.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/ActionCatalog.kt
+@@ -51,6 +51,7 @@ object ActionCatalog {
+ 
+     fun label(context: Context, action: InputAction): String = when (action) {
+         InputAction.None -> context.getString(R.string.gesture_action_disabled)
++        InputAction.Ignore -> context.getString(R.string.action_do_nothing)
+         is InputAction.Local -> context.getString(localActions.first { it.action == action }.nameResId)
+         is InputAction.AaKey -> aaKeys.firstOrNull { it.action == action }?.let { context.getString(it.nameResId) }
+             ?: context.getString(R.string.action_aa_key_code, action.keyCode)
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/ActionPickerFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/ActionPickerFragment.kt
+index 5b9ab4c9..59c540e1 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/ActionPickerFragment.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/ActionPickerFragment.kt
+@@ -30,6 +30,7 @@ class ActionPickerFragment : Fragment() {
+         private const val ARG_TITLE = "title"
+         private const val ARG_CURRENT = "current"
+         private const val ARG_NONE_LABEL = "none_label"
++        private const val ARG_OFFERS_DO_NOTHING = "offers_do_nothing"
+ 
+         /** Result bundle: the chosen action, encoded with [InputActionCodec]. */
+         const val RESULT_ACTION = "action"
+@@ -38,12 +39,17 @@ class ActionPickerFragment : Fragment() {
+ 
+         private const val APP_PICK_KEY = "action_picker_app"
+ 
+-        fun args(requestKey: String, tag: String, title: String, current: InputAction, noneLabelResId: Int) = bundleOf(
++        /** [offersDoNothing] for keys: [InputAction.Ignore] next to the none row. A gesture's none already does nothing. */
++        fun args(
++            requestKey: String, tag: String, title: String, current: InputAction, noneLabelResId: Int,
++            offersDoNothing: Boolean = false,
++        ) = bundleOf(
+             ARG_REQUEST_KEY to requestKey,
+             ARG_TAG to tag,
+             ARG_TITLE to title,
+             ARG_CURRENT to InputActionCodec.encode(current),
+             ARG_NONE_LABEL to noneLabelResId,
++            ARG_OFFERS_DO_NOTHING to offersDoNothing,
+         )
+     }
+ 
+@@ -92,6 +98,9 @@ class ActionPickerFragment : Fragment() {
+         val selected = current
+         val items = mutableListOf<SettingItem>()
+         items += row("none", getString(requireArguments().getInt(ARG_NONE_LABEL)), InputAction.None, selected)
++        if (requireArguments().getBoolean(ARG_OFFERS_DO_NOTHING)) {
++            items += row("ignore", getString(R.string.action_do_nothing), InputAction.Ignore, selected)
++        }
+ 
+         items += SettingItem.CategoryHeader("projection", R.string.action_section_projection)
+         ActionCatalog.localActions.forEach { items += row(it.action.id(), getString(it.nameResId), it.action, selected) }
+diff --git a/app/src/main/java/com/andrerinas/openheadunit/main/KeymapFragment.kt b/app/src/main/java/com/andrerinas/openheadunit/main/KeymapFragment.kt
+index c190d5f0..07e90c46 100644
+--- a/app/src/main/java/com/andrerinas/openheadunit/main/KeymapFragment.kt
++++ b/app/src/main/java/com/andrerinas/openheadunit/main/KeymapFragment.kt
+@@ -139,7 +139,8 @@ class KeymapFragment : Fragment(), MainActivity.KeyListener {
+                 tag = physicalKey.toString(),
+                 title = physicalKeyName(physicalKey),
+                 current = settings.keyBindings[physicalKey] ?: InputAction.None,
+-                noneLabelResId = R.string.action_remove_binding
++                noneLabelResId = R.string.action_remove_binding,
++                offersDoNothing = true,
+             )
+         )
+     }
+diff --git a/app/src/main/res/values-ar/strings.xml b/app/src/main/res/values-ar/strings.xml
+index e8d228b6..c43f8980 100644
+--- a/app/src/main/res/values-ar/strings.xml
++++ b/app/src/main/res/values-ar/strings.xml
+@@ -342,7 +342,7 @@
+     <string name="auto_connect_help">تعمل هذه الطرق تلقائيا عند فتح التطبيق. قم بتمكين الطرق التي تريدها، ثم اسحب لضبط الترتيب. سيتم استخدام أول طريقة ممكّنة تنجح.</string>
+     <string name="auto_connect_screen_help">يحدد كيف يتصل التطبيق تلقائيًا عند فتحه. فعّل الطرق التي تريدها واسحبها إلى ترتيب المحاولة. تُستخدم أول طريقة تنجح. يمنح التأخير شبكة Wi-Fi وقتًا للاستيقاظ على وحدة بطيئة. لا شيء هنا يغيّر اتصالًا تبدأه بنفسك. يطبّق «حفظ» التغييرات.</string>
+     <string name="dpi_screen_help">يحدد كثافة البكسلات التي يرسم بها Android Auto. تكبّر قيمة DPI الأعلى الأيقونات والنص فيتسع أقل على الشاشة. تصغّرها قيمة DPI الأدنى فيتسع أكثر. «تلقائي» يستخدم كثافة هذا الجهاز. تُطبَّق القيمة الجديدة عند الاتصال التالي.</string>
+-    <string name="keymap_screen_help">يربط مفاتيح هذه الوحدة وأزرارها بإجراءات: مفتاح Android Auto، أو إجراء على شاشة الإسقاط، أو تشغيل تطبيق. المس «إضافة ربط مفتاح»، واضغط المفتاح، ثم اختر الإجراء. المس ربطًا لتغييره أو إزالته. تحذف «إعادة تعيين» كل الروابط.</string>
++    <string name="keymap_screen_help">يربط مفاتيح هذه الوحدة وأزرارها بإجراءات: مفتاح Android Auto، أو إجراء على شاشة الإسقاط، أو تشغيل تطبيق. المس «إضافة ربط مفتاح»، واضغط المفتاح، ثم اختر الإجراء. المس ربطًا لتغييره أو إزالته. تحذف «إعادة تعيين» كل الروابط. يمنع «لا تفعل شيئًا» وصول المفتاح إلى Android Auto، مثل زر على المقود مخصص لنظام السيارة الأصلي.</string>
+     <string name="customization_screen_help">يغيّر مظهر الشاشة الرئيسية لهذا التطبيق: صورة الخلفية وألوان الأزرار الأربعة وحجمها وحجم النص. يتحكم الإعداد الليلي في الخلفية في الوضع الداكن. لا يغيّر أيٌّ من هذا ما يعرضه Android Auto في الإسقاط.</string>
+     <string name="loading_screen_screen_help">يحدد الصورة أو الفيديو القصير المعروض أثناء بدء Android Auto. اختر صورة أو فيديو حتى 10 ميغابايت، وكيّفه ليناسب الشاشة، وكرّر الرسوم المتحركة القصيرة. يمكنك أيضًا إخفاء نص البدء. تعيد «إزالة» الشاشة الافتراضية.</string>
+     <string name="auto_connect_priority">الأولوية %d</string>
+@@ -448,6 +448,7 @@
+     <string name="key_assigned">تم تعيين \'%1$s\' إلى \'%2$s\'</string>
+     <string name="action_picker_title">اختر إجراءً</string>
+     <string name="action_remove_binding">إزالة الربط</string>
++    <string name="action_do_nothing">لا تفعل شيئًا</string>
+     <string name="action_section_projection">شاشة الإسقاط</string>
+     <string name="action_section_aa_keys">مفاتيح Android Auto</string>
+     <string name="action_section_apps">التطبيقات</string>
+diff --git a/app/src/main/res/values-cs/strings.xml b/app/src/main/res/values-cs/strings.xml
+index d23e0d44..c1dac6e4 100644
+--- a/app/src/main/res/values-cs/strings.xml
++++ b/app/src/main/res/values-cs/strings.xml
+@@ -342,7 +342,7 @@
+     <string name="auto_connect_help">Tyto metody se spouštějí automaticky při otevření aplikace. Zapněte požadované metody a přetažením nastavte jejich pořadí. Použije se první zapnutá metoda, která uspěje.</string>
+     <string name="auto_connect_screen_help">Určuje, jak se aplikace po otevření připojí sama. Zapněte požadované metody a přetažením je seřaďte do pořadí zkoušení. Použije se první, která uspěje. Prodleva dá Wi-Fi čas probudit se na pomalém autorádiu. Nic z toho nemění připojení, které spustíte sami. Uložit změny použije.</string>
+     <string name="dpi_screen_help">Nastavuje hustotu pixelů, ve které Android Auto vykresluje. Vyšší DPI zvětší ikony a text, takže se na obrazovku vejde méně. Nižší DPI je zmenší, takže se vejde více. Automaticky používá hustotu tohoto zařízení. Nová hodnota platí od dalšího připojení.</string>
+-    <string name="keymap_screen_help">Přiřazuje klávesy a tlačítka tohoto autorádia k akcím: klávese Android Auto, akci obrazovky projekce nebo spuštění aplikace. Klepněte na Přidat přiřazení klávesy, stiskněte klávesu a vyberte akci. Klepnutím na přiřazení ho změníte nebo odeberete. Resetovat odstraní všechna přiřazení.</string>
++    <string name="keymap_screen_help">Přiřazuje klávesy a tlačítka tohoto autorádia k akcím: klávese Android Auto, akci obrazovky projekce nebo spuštění aplikace. Klepněte na Přidat přiřazení klávesy, stiskněte klávesu a vyberte akci. Klepnutím na přiřazení ho změníte nebo odeberete. Resetovat odstraní všechna přiřazení. Nic nedělat zabrání klávese dostat se do Android Auto, například tlačítku na volantu určenému pro původní systém auta.</string>
+     <string name="customization_screen_help">Mění vzhled domovské obrazovky této aplikace: obrázek na pozadí, barvy a velikost čtyř tlačítek a velikost textu. Noční nastavení řídí pozadí v tmavém režimu. Nic z toho nemění, co Android Auto zobrazuje v projekci.</string>
+     <string name="loading_screen_screen_help">Nastavuje obrázek nebo krátké video zobrazené při spouštění Android Auto. Vyberte obrázek nebo video do 10 MB, přizpůsobte je obrazovce a krátké animace přehrávejte ve smyčce. Můžete také skrýt úvodní text. Odebrat vrátí výchozí obrazovku.</string>
+     <string name="auto_connect_priority">Priorita %d</string>
+@@ -448,6 +448,7 @@
+     <string name="key_assigned">\'%1$s\' přiřazeno k \'%2$s\'</string>
+     <string name="action_picker_title">Vyberte akci</string>
+     <string name="action_remove_binding">Odebrat přiřazení</string>
++    <string name="action_do_nothing">Nic nedělat</string>
+     <string name="action_section_projection">Obrazovka projekce</string>
+     <string name="action_section_aa_keys">Klávesy Android Auto</string>
+     <string name="action_section_apps">Aplikace</string>
+diff --git a/app/src/main/res/values-de/strings.xml b/app/src/main/res/values-de/strings.xml
+index fc21e97e..cac2eaf0 100644
+--- a/app/src/main/res/values-de/strings.xml
++++ b/app/src/main/res/values-de/strings.xml
+@@ -414,7 +414,7 @@
+     <string name="auto_connect_help">Diese Methoden werden beim Öffnen der App automatisch ausgeführt. Aktiviere die gewünschten und ziehe sie in die passende Reihenfolge. Verwendet wird die erste aktivierte Methode, die funktioniert.</string>
+     <string name="auto_connect_screen_help">Legt fest, wie sich die App beim Öffnen selbst verbindet. Aktiviere die gewünschten Methoden und ziehe sie in die Reihenfolge, in der sie versucht werden. Die erste erfolgreiche wird genutzt. Die Verzögerung gibt dem WLAN auf einem langsamen Gerät Zeit zum Aufwachen. Eine Verbindung, die du selbst startest, bleibt unberührt. Mit Speichern werden die Änderungen übernommen.</string>
+     <string name="dpi_screen_help">Legt die Pixeldichte fest, mit der Android Auto zeichnet. Bei höherem DPI sind Symbole und Text größer, es passt weniger auf den Bildschirm. Bei niedrigerem DPI sind sie kleiner, es passt mehr darauf. Automatisch nutzt die Dichte dieses Geräts. Der neue Wert gilt ab der nächsten Verbindung.</string>
+-    <string name="keymap_screen_help">Belegt die Tasten dieses Geräts mit Aktionen: einer Android-Auto-Taste, einer Aktion des Projektionsbildschirms oder dem Start einer App. Tippe auf „Tastenbelegung hinzufügen“, drücke die Taste und wähle dann die Aktion. Tippe auf eine Belegung, um sie zu ändern oder zu entfernen. Zurücksetzen entfernt alle Belegungen.</string>
++    <string name="keymap_screen_help">Belegt die Tasten dieses Geräts mit Aktionen: einer Android-Auto-Taste, einer Aktion des Projektionsbildschirms oder dem Start einer App. Tippe auf „Tastenbelegung hinzufügen“, drücke die Taste und wähle dann die Aktion. Tippe auf eine Belegung, um sie zu ändern oder zu entfernen. Zurücksetzen entfernt alle Belegungen. „Nichts tun“ hält eine Taste von Android Auto fern, etwa eine Lenkradtaste für das eigene System des Autos.</string>
+     <string name="customization_screen_help">Ändert das Aussehen des Startbildschirms dieser App: Hintergrundbild, Farben und Größe der vier Buttons sowie Textgröße. Die Nachteinstellung steuert den Hintergrund im Dunkelmodus. Nichts davon ändert, was Android Auto in der Projektion zeigt.</string>
+     <string name="loading_screen_screen_help">Legt das Bild oder kurze Video fest, das beim Start von Android Auto erscheint. Wähle ein Bild oder ein Video bis 10 MB, passe es an den Bildschirm an und wiederhole kurze Animationen in einer Schleife. Du kannst auch den Starttext ausblenden. Mit Entfernen kehrst du zum Standardbildschirm zurück.</string>
+     <string name="auto_connect_priority">Priorität %d</string>
+@@ -539,6 +539,7 @@
+     <string name="key_assigned">„%1$s“ wurde „%2$s“ zugewiesen</string>
+     <string name="action_picker_title">Aktion wählen</string>
+     <string name="action_remove_binding">Belegung entfernen</string>
++    <string name="action_do_nothing">Nichts tun</string>
+     <string name="action_section_projection">Projektionsbildschirm</string>
+     <string name="action_section_aa_keys">Android-Auto-Tasten</string>
+     <string name="action_section_apps">Apps</string>
+diff --git a/app/src/main/res/values-es-rES/strings.xml b/app/src/main/res/values-es-rES/strings.xml
+index 34b57fe0..1d35e903 100644
+--- a/app/src/main/res/values-es-rES/strings.xml
++++ b/app/src/main/res/values-es-rES/strings.xml
+@@ -343,7 +343,7 @@
+     <string name="auto_connect_help">Estos métodos se ejecutan automáticamente al abrir la app. Activa los que quieras y arrastra para ordenarlos. Se usará el primer método activado que funcione.</string>
+     <string name="auto_connect_screen_help">Define cómo se conecta la aplicación por sí sola al abrirse. Activa los métodos que quieras y arrástralos al orden en que se probarán. Se usa el primero que funcione. El retraso da tiempo a que el WiFi despierte en una unidad lenta. Nada de esto cambia una conexión que inicies tú. Guardar aplica los cambios.</string>
+     <string name="dpi_screen_help">Define la densidad de píxeles con la que dibuja Android Auto. Un DPI más alto agranda los iconos y el texto, y cabe menos en pantalla. Un DPI más bajo los reduce, y cabe más. Automático usa la densidad de este dispositivo. El nuevo valor se aplica en la próxima conexión.</string>
+-    <string name="keymap_screen_help">Asigna las teclas y botones de esta unidad a acciones: una tecla de Android Auto, una acción de la pantalla de proyección o abrir una app. Toca Añadir asignación de tecla, pulsa la tecla y elige la acción. Toca una asignación para cambiarla o quitarla. Restablecer borra todas las asignaciones.</string>
++    <string name="keymap_screen_help">Asigna las teclas y botones de esta unidad a acciones: una tecla de Android Auto, una acción de la pantalla de proyección o abrir una app. Toca Añadir asignación de tecla, pulsa la tecla y elige la acción. Toca una asignación para cambiarla o quitarla. Restablecer borra todas las asignaciones. No hacer nada impide que una tecla llegue a Android Auto, por ejemplo una tecla del volante pensada para el sistema original del coche.</string>
+     <string name="customization_screen_help">Cambia el aspecto de la pantalla de inicio de esta aplicación: la imagen de fondo, los colores y el tamaño de los cuatro botones, y el tamaño del texto. El ajuste nocturno controla el fondo en modo oscuro. Nada de esto cambia lo que Android Auto muestra en la proyección.</string>
+     <string name="loading_screen_screen_help">Define la imagen o el vídeo corto que se muestra mientras arranca Android Auto. Elige una imagen o un vídeo de hasta 10 MB, escálalo para ajustarlo a la pantalla y repite las animaciones cortas en bucle. También puedes ocultar el texto de inicio. Eliminar vuelve a la pantalla predeterminada.</string>
+     <string name="auto_connect_priority">Prioridad %d</string>
+@@ -449,6 +449,7 @@
+     <string name="key_assigned">\'%1$s\' asignada a \'%2$s\'</string>
+     <string name="action_picker_title">Elegir acción</string>
+     <string name="action_remove_binding">Quitar asignación</string>
++    <string name="action_do_nothing">No hacer nada</string>
+     <string name="action_section_projection">Pantalla de proyección</string>
+     <string name="action_section_aa_keys">Teclas de Android Auto</string>
+     <string name="action_section_apps">Aplicaciones</string>
+diff --git a/app/src/main/res/values-es/strings.xml b/app/src/main/res/values-es/strings.xml
+index 8e56a47c..a38437b5 100644
+--- a/app/src/main/res/values-es/strings.xml
++++ b/app/src/main/res/values-es/strings.xml
+@@ -343,7 +343,7 @@
+     <string name="auto_connect_help">Estos métodos se ejecutan automáticamente al abrir la app. Activa los que quieras y arrastra para definir el orden. Se usará el primer método activado que funcione.</string>
+     <string name="auto_connect_screen_help">Define cómo se conecta la app por sí sola al abrirse. Activa los métodos que quieras y arrástralos al orden en que se probarán. Se usa el primero que funcione. El retraso da tiempo a que el WiFi se active en una unidad lenta. Nada de esto cambia una conexión que inicies tú. Guardar aplica los cambios.</string>
+     <string name="dpi_screen_help">Define la densidad de píxeles con la que dibuja Android Auto. Un DPI más alto agranda los íconos y el texto, y cabe menos en pantalla. Un DPI más bajo los reduce, y cabe más. Automático usa la densidad de este dispositivo. El nuevo valor se aplica en la próxima conexión.</string>
+-    <string name="keymap_screen_help">Asigna las teclas y botones de esta unidad a acciones: una tecla de Android Auto, una acción de la pantalla de proyección o abrir una app. Toca Agregar asignación de tecla, presiona la tecla y elige la acción. Toca una asignación para cambiarla o quitarla. Restablecer borra todas las asignaciones.</string>
++    <string name="keymap_screen_help">Asigna las teclas y botones de esta unidad a acciones: una tecla de Android Auto, una acción de la pantalla de proyección o abrir una app. Toca Agregar asignación de tecla, presiona la tecla y elige la acción. Toca una asignación para cambiarla o quitarla. Restablecer borra todas las asignaciones. No hacer nada impide que una tecla llegue a Android Auto, por ejemplo una tecla del volante pensada para el sistema original del coche.</string>
+     <string name="customization_screen_help">Cambia el aspecto de la pantalla de inicio de esta app: la imagen de fondo, los colores y el tamaño de los cuatro botones, y el tamaño del texto. El ajuste nocturno controla el fondo en modo oscuro. Nada de esto cambia lo que Android Auto muestra en la proyección.</string>
+     <string name="loading_screen_screen_help">Define la imagen o el video corto que se muestra mientras inicia Android Auto. Elige una imagen o un video de hasta 10 MB, escálalo para ajustarlo a la pantalla y repite las animaciones cortas en bucle. También puedes ocultar el texto de inicio. Eliminar vuelve a la pantalla predeterminada.</string>
+     <string name="auto_connect_priority">Prioridad %d</string>
+@@ -449,6 +449,7 @@
+     <string name="key_assigned">\'%1$s\' asignado a \'%2$s\'</string>
+     <string name="action_picker_title">Elegir acción</string>
+     <string name="action_remove_binding">Quitar asignación</string>
++    <string name="action_do_nothing">No hacer nada</string>
+     <string name="action_section_projection">Pantalla de proyección</string>
+     <string name="action_section_aa_keys">Teclas de Android Auto</string>
+     <string name="action_section_apps">Aplicaciones</string>
+diff --git a/app/src/main/res/values-fr/strings.xml b/app/src/main/res/values-fr/strings.xml
+index 2cc6c221..7b194412 100644
+--- a/app/src/main/res/values-fr/strings.xml
++++ b/app/src/main/res/values-fr/strings.xml
+@@ -592,7 +592,7 @@
+     <string name="auto_connect_help">Ces méthodes s\'exécutent automatiquement à l\'ouverture de l\'application. Activez celles que vous souhaitez, puis faites-les glisser pour définir l\'ordre. La première méthode activée qui réussit est utilisée.</string>
+     <string name="auto_connect_screen_help">Définit comment l\'application se connecte seule à son ouverture. Activez les méthodes voulues et faites-les glisser dans l\'ordre d\'essai. La première qui réussit est utilisée. Le délai laisse au WiFi le temps de se réveiller sur un appareil lent. Rien ici ne modifie une connexion que vous lancez vous-même. Enregistrer applique les changements.</string>
+     <string name="dpi_screen_help">Définit la densité de pixels utilisée par Android Auto pour dessiner. Un DPI plus élevé agrandit les icônes et le texte, donc moins de contenu tient à l\'écran. Un DPI plus bas les réduit, donc plus de contenu tient. Automatique utilise la densité de cet appareil. La nouvelle valeur s\'applique à la prochaine connexion.</string>
+-    <string name="keymap_screen_help">Associe les touches et boutons de cet appareil à des actions : une touche Android Auto, une action de l\'écran de projection ou le lancement d\'une app. Touchez « Ajouter une association de touche », appuyez sur la touche, puis choisissez l\'action. Touchez une association pour la modifier ou la supprimer. Réinitialiser supprime toutes les associations.</string>
++    <string name="keymap_screen_help">Associe les touches et boutons de cet appareil à des actions : une touche Android Auto, une action de l\'écran de projection ou le lancement d\'une app. Touchez « Ajouter une association de touche », appuyez sur la touche, puis choisissez l\'action. Touchez une association pour la modifier ou la supprimer. Réinitialiser supprime toutes les associations. « Ne rien faire » empêche une touche d\'atteindre Android Auto, par exemple une touche du volant destinée au système d\'origine de la voiture.</string>
+     <string name="customization_screen_help">Change l\'apparence de l\'écran d\'accueil de cette application : l\'image de fond, les couleurs et la taille des quatre boutons, et la taille du texte. Le réglage nuit gère le fond en mode sombre. Rien de cela ne change ce qu\'Android Auto affiche dans la projection.</string>
+     <string name="loading_screen_screen_help">Définit l\'image ou la courte vidéo affichée pendant le démarrage d\'Android Auto. Choisissez une image ou une vidéo de 10 Mo maximum, adaptez-la à l\'écran et mettez les courtes animations en boucle. Vous pouvez aussi masquer le texte de démarrage. Supprimer rétablit l\'écran par défaut.</string>
+     <string name="auto_connect_priority">Priorité %d</string>
+@@ -774,6 +774,7 @@
+     <string name="key_assigned">« %1$s » assignée à « %2$s »</string>
+     <string name="action_picker_title">Choisir une action</string>
+     <string name="action_remove_binding">Supprimer l\'association</string>
++    <string name="action_do_nothing">Ne rien faire</string>
+     <string name="action_section_projection">Écran de projection</string>
+     <string name="action_section_aa_keys">Touches Android Auto</string>
+     <string name="action_section_apps">Applications</string>
+diff --git a/app/src/main/res/values-hi/strings.xml b/app/src/main/res/values-hi/strings.xml
+index 5a00214a..bc33ea6d 100644
+--- a/app/src/main/res/values-hi/strings.xml
++++ b/app/src/main/res/values-hi/strings.xml
+@@ -668,7 +668,7 @@
+     <string name="auto_connect_help">ये तरीके ऐप खुलते ही अपने-आप चलते हैं। जो चाहिए उन्हें चालू करें, फिर खींचकर क्रम तय करें। चालू तरीकों में से जो पहले सफल होगा, वही इस्तेमाल होगा।</string>
+     <string name="auto_connect_screen_help">तय करता है कि ऐप्लिकेशन खुलने पर अपने आप कैसे कनेक्ट हो। अपनी पसंद के तरीके चालू करें और उन्हें आज़माने के क्रम में खींचें। जो पहला तरीका सफल होगा, वही इस्तेमाल होगा। देरी से धीमी यूनिट पर Wi-Fi को जागने का समय मिलता है। यहाँ की कोई भी चीज़ आपके शुरू किए कनेक्शन को नहीं बदलती। सेव करें दबाने पर बदलाव लागू होते हैं।</string>
+     <string name="dpi_screen_help">तय करता है कि Android Auto किस पिक्सल डेंसिटी पर ड्रॉ करे। ज़्यादा DPI से आइकन और टेक्स्ट बड़े होते हैं, इसलिए स्क्रीन पर कम समाता है। कम DPI से वे छोटे होते हैं, इसलिए ज़्यादा समाता है। स्वचालित इस डिवाइस की डेंसिटी इस्तेमाल करता है। नई वैल्यू अगले कनेक्शन पर लागू होती है।</string>
+-    <string name="keymap_screen_help">इस यूनिट की कुंजियों और बटनों को कार्रवाइयों से जोड़ता है: Android Auto कुंजी, प्रोजेक्शन स्क्रीन की कार्रवाई, या कोई ऐप खोलना। कुंजी बाइंडिंग जोड़ें पर टैप करें, कुंजी दबाएँ, फिर कार्रवाई चुनें। बदलने या हटाने के लिए किसी बाइंडिंग पर टैप करें। रीसेट सभी बाइंडिंग हटा देता है।</string>
++    <string name="keymap_screen_help">इस यूनिट की कुंजियों और बटनों को कार्रवाइयों से जोड़ता है: Android Auto कुंजी, प्रोजेक्शन स्क्रीन की कार्रवाई, या कोई ऐप खोलना। कुंजी बाइंडिंग जोड़ें पर टैप करें, कुंजी दबाएँ, फिर कार्रवाई चुनें। बदलने या हटाने के लिए किसी बाइंडिंग पर टैप करें। रीसेट सभी बाइंडिंग हटा देता है। कुछ न करें किसी कुंजी को Android Auto तक पहुँचने से रोकता है, जैसे कार के अपने सिस्टम के लिए बना स्टीयरिंग बटन।</string>
+     <string name="customization_screen_help">इस ऐप्लिकेशन की होम स्क्रीन का रूप बदलता है: बैकग्राउंड इमेज, चारों बटनों के रंग और आकार, और टेक्स्ट का आकार। नाइट सेटिंग डार्क मोड में बैकग्राउंड तय करती है। इनमें से कोई भी चीज़ यह नहीं बदलती कि Android Auto प्रोजेक्शन में क्या दिखाता है।</string>
+     <string name="loading_screen_screen_help">Android Auto शुरू होते समय दिखने वाली तस्वीर या छोटा वीडियो तय करता है। 10 MB तक की इमेज या वीडियो चुनें, उसे स्क्रीन के हिसाब से स्केल करें और छोटे ऐनिमेशन को लूप में चलाएँ। शुरुआती टेक्स्ट छिपाया भी जा सकता है। हटाएं दबाने पर डिफ़ॉल्ट स्क्रीन लौट आती है।</string>
+     <string name="auto_connect_priority">प्राथमिकता %d</string>
+@@ -939,6 +939,7 @@
+     <string name="key_assigned">\'%1$s\' को \'%2$s\' पर असाइन किया गया</string>
+     <string name="action_picker_title">कार्रवाई चुनें</string>
+     <string name="action_remove_binding">बाइंडिंग हटाएँ</string>
++    <string name="action_do_nothing">कुछ न करें</string>
+     <string name="action_section_projection">प्रोजेक्शन स्क्रीन</string>
+     <string name="action_section_aa_keys">Android Auto कुंजियाँ</string>
+     <string name="action_section_apps">ऐप्स</string>
+diff --git a/app/src/main/res/values-hu/strings.xml b/app/src/main/res/values-hu/strings.xml
+index d06d7179..865f6965 100644
+--- a/app/src/main/res/values-hu/strings.xml
++++ b/app/src/main/res/values-hu/strings.xml
+@@ -342,7 +342,7 @@
+     <string name="auto_connect_help">Ezek a módszerek automatikusan futnak az alkalmazás megnyitásakor. Engedélyezze a kívántakat, majd húzással állítsa be a sorrendjüket. Az alkalmazás az első sikeres, engedélyezett módszert használja.</string>
+     <string name="auto_connect_screen_help">Megadja, hogyan csatlakozik az alkalmazás magától megnyitáskor. Kapcsolja be a kívánt módszereket, és húzza őket a kipróbálás sorrendjébe. Az első sikeres módszer lesz használva. A késleltetés időt ad a Wi-Fi-nek az ébredésre egy lassú fejegységen. Semmi sem módosítja az Ön által indított csatlakozást. A Mentés alkalmazza a módosításokat.</string>
+     <string name="dpi_screen_help">Megadja a képsűrűséget, amellyel az Android Auto rajzol. A magasabb DPI nagyobbra veszi az ikonokat és a szöveget, így kevesebb fér a képernyőre. Az alacsonyabb DPI kisebbre veszi őket, így több fér rá. Az Automatikus ennek az eszköznek a sűrűségét használja. Az új érték a következő csatlakozáskor lép érvénybe.</string>
+-    <string name="keymap_screen_help">A fejegység billentyűit és gombjait műveletekhez rendeli: Android Auto gombhoz, a kivetítési képernyő egy műveletéhez vagy egy alkalmazás indításához. Koppintson a Gomb hozzárendelése elemre, nyomja meg a gombot, majd válassza ki a műveletet. Egy hozzárendelésre koppintva módosíthatja vagy törölheti. A Visszaállítás minden hozzárendelést töröl.</string>
++    <string name="keymap_screen_help">A fejegység billentyűit és gombjait műveletekhez rendeli: Android Auto gombhoz, a kivetítési képernyő egy műveletéhez vagy egy alkalmazás indításához. Koppintson a Gomb hozzárendelése elemre, nyomja meg a gombot, majd válassza ki a műveletet. Egy hozzárendelésre koppintva módosíthatja vagy törölheti. A Visszaállítás minden hozzárendelést töröl. A Ne csináljon semmit megakadályozza, hogy egy gomb eljusson az Android Autóhoz, például az autó gyári rendszerének szánt kormánygomb.</string>
+     <string name="customization_screen_help">Módosítja az alkalmazás kezdőképernyőjének megjelenését: a háttérképet, a négy gomb színeit és méretét, valamint a szövegméretet. Az éjszakai beállítás a sötét mód hátterét szabályozza. Ezek egyike sem változtatja meg, amit az Android Auto a kivetítésen mutat.</string>
+     <string name="loading_screen_screen_help">Megadja az Android Auto indulásakor látható képet vagy rövid videót. Válasszon legfeljebb 10 MB-os képet vagy videót, igazítsa a képernyőhöz, és ismételje a rövid animációkat. Az induló szöveget is elrejtheti. Az Eltávolítás visszaállítja az alapértelmezett képernyőt.</string>
+     <string name="auto_connect_priority">Prioritás %d</string>
+@@ -447,6 +447,7 @@
+     <string name="key_assigned">\'%1$s\' hozzárendelve ehhez: \'%2$s\'</string>
+     <string name="action_picker_title">Művelet kiválasztása</string>
+     <string name="action_remove_binding">Hozzárendelés törlése</string>
++    <string name="action_do_nothing">Ne csináljon semmit</string>
+     <string name="action_section_projection">Kivetítési képernyő</string>
+     <string name="action_section_aa_keys">Android Auto gombok</string>
+     <string name="action_section_apps">Alkalmazások</string>
+diff --git a/app/src/main/res/values-in/strings.xml b/app/src/main/res/values-in/strings.xml
+index 76530a41..2d01ad4f 100644
+--- a/app/src/main/res/values-in/strings.xml
++++ b/app/src/main/res/values-in/strings.xml
+@@ -668,7 +668,7 @@
+     <string name="auto_connect_help">Metode ini berjalan otomatis saat aplikasi dibuka. Aktifkan metode yang diinginkan, lalu seret untuk mengatur urutan. Metode aktif pertama yang berhasil akan digunakan.</string>
+     <string name="auto_connect_screen_help">Mengatur cara aplikasi terhubung sendiri saat dibuka. Aktifkan metode yang diinginkan dan seret ke urutan percobaan. Metode pertama yang berhasil dipakai. Jeda memberi waktu bagi Wi-Fi untuk aktif di unit yang lambat. Tidak ada yang di sini mengubah koneksi yang Anda mulai sendiri. Simpan menerapkan perubahan.</string>
+     <string name="dpi_screen_help">Mengatur kepadatan piksel yang dipakai Android Auto untuk menggambar. DPI lebih tinggi membuat ikon dan teks lebih besar, jadi lebih sedikit yang muat di layar. DPI lebih rendah membuatnya lebih kecil, jadi lebih banyak yang muat. Otomatis memakai kepadatan perangkat ini. Nilai baru berlaku pada koneksi berikutnya.</string>
+-    <string name="keymap_screen_help">Menetapkan tombol unit ini ke tindakan: tombol Android Auto, tindakan layar proyeksi, atau membuka aplikasi. Ketuk Tambah penetapan tombol, tekan tombolnya, lalu pilih tindakan. Ketuk penetapan untuk mengubah atau menghapusnya. Atur Ulang menghapus semua penetapan.</string>
++    <string name="keymap_screen_help">Menetapkan tombol unit ini ke tindakan: tombol Android Auto, tindakan layar proyeksi, atau membuka aplikasi. Ketuk Tambah penetapan tombol, tekan tombolnya, lalu pilih tindakan. Ketuk penetapan untuk mengubah atau menghapusnya. Atur Ulang menghapus semua penetapan. Jangan lakukan apa pun mencegah tombol sampai ke Android Auto, misalnya tombol setir yang ditujukan untuk sistem bawaan mobil.</string>
+     <string name="customization_screen_help">Mengubah tampilan layar utama aplikasi ini: gambar latar, warna dan ukuran empat tombol, serta ukuran teks. Setelan malam mengatur latar di mode gelap. Tidak satu pun mengubah apa yang ditampilkan Android Auto pada proyeksi.</string>
+     <string name="loading_screen_screen_help">Mengatur gambar atau video singkat yang ditampilkan saat Android Auto dimulai. Pilih gambar atau video hingga 10 MB, skalakan agar pas dengan layar, dan ulang animasi pendek. Anda juga bisa menyembunyikan teks awal. Hapus kembali ke layar bawaan.</string>
+     <string name="auto_connect_priority">Prioritas %d</string>
+@@ -940,6 +940,7 @@
+     <string name="key_assigned">\'%1$s\' ditetapkan ke \'%2$s\'</string>
+     <string name="action_picker_title">Pilih tindakan</string>
+     <string name="action_remove_binding">Hapus penetapan</string>
++    <string name="action_do_nothing">Jangan lakukan apa pun</string>
+     <string name="action_section_projection">Layar proyeksi</string>
+     <string name="action_section_aa_keys">Tombol Android Auto</string>
+     <string name="action_section_apps">Aplikasi</string>
+diff --git a/app/src/main/res/values-it/strings.xml b/app/src/main/res/values-it/strings.xml
+index 6a5d6e31..18eb0902 100644
+--- a/app/src/main/res/values-it/strings.xml
++++ b/app/src/main/res/values-it/strings.xml
+@@ -373,7 +373,7 @@
+     <string name="auto_connect_help">Questi metodi vengono eseguiti automaticamente all\'apertura dell\'app. Abilita quelli che desideri, quindi trascina per impostare l\'ordine. Verrà utilizzato il primo metodo abilitato che ha successo.</string>
+     <string name="auto_connect_screen_help">Imposta come l\'app si connette da sola all\'apertura. Attiva i metodi che vuoi e trascinali nell\'ordine in cui provarli. Viene usato il primo che riesce. Il ritardo dà al WiFi il tempo di riattivarsi su un\'unità lenta. Niente qui cambia una connessione avviata da te. Salva applica le modifiche.</string>
+     <string name="dpi_screen_help">Imposta la densità di pixel con cui disegna Android Auto. Un DPI più alto ingrandisce icone e testo, quindi sullo schermo ne entra meno. Un DPI più basso li rimpicciolisce, quindi ne entra di più. Automatico usa la densità di questo dispositivo. Il nuovo valore si applica alla prossima connessione.</string>
+-    <string name="keymap_screen_help">Associa i tasti e i pulsanti di questa unità ad azioni: un tasto di Android Auto, un\'azione dello schermo di proiezione o l\'avvio di un\'app. Tocca Aggiungi associazione tasto, premi il tasto e scegli l\'azione. Tocca un\'associazione per modificarla o rimuoverla. Ripristina elimina tutte le associazioni.</string>
++    <string name="keymap_screen_help">Associa i tasti e i pulsanti di questa unità ad azioni: un tasto di Android Auto, un\'azione dello schermo di proiezione o l\'avvio di un\'app. Tocca Aggiungi associazione tasto, premi il tasto e scegli l\'azione. Tocca un\'associazione per modificarla o rimuoverla. Ripristina elimina tutte le associazioni. Non fare nulla impedisce a un tasto di arrivare ad Android Auto, per esempio un tasto del volante destinato al sistema originale dell\'auto.</string>
+     <string name="customization_screen_help">Cambia l\'aspetto della schermata iniziale di questa app: l\'immagine di sfondo, i colori e la dimensione dei quattro pulsanti, e la dimensione del testo. L\'impostazione notte controlla lo sfondo in modalità scura. Niente di questo cambia ciò che Android Auto mostra nella proiezione.</string>
+     <string name="loading_screen_screen_help">Imposta l\'immagine o il breve video mostrati mentre Android Auto si avvia. Scegli un\'immagine o un video fino a 10 MB, adattali allo schermo e ripeti in loop le animazioni brevi. Puoi anche nascondere il testo di avvio. Rimuovi torna alla schermata predefinita.</string>
+     <string name="auto_connect_priority">Priorità %d</string>
+@@ -479,6 +479,7 @@
+     <string name="key_assigned">\'%1$s\' assegnato a \'%2$s\'</string>
+     <string name="action_picker_title">Scegli azione</string>
+     <string name="action_remove_binding">Rimuovi associazione</string>
++    <string name="action_do_nothing">Non fare nulla</string>
+     <string name="action_section_projection">Schermo di proiezione</string>
+     <string name="action_section_aa_keys">Tasti di Android Auto</string>
+     <string name="action_section_apps">App</string>
+diff --git a/app/src/main/res/values-ja/strings.xml b/app/src/main/res/values-ja/strings.xml
+index bd661149..dcdd2348 100644
+--- a/app/src/main/res/values-ja/strings.xml
++++ b/app/src/main/res/values-ja/strings.xml
+@@ -373,7 +373,7 @@
+     <string name="auto_connect_help">これらの方法はアプリを開くと自動的に実行されます。使う方法を有効にし、ドラッグして順番を決めてください。有効にした方法のうち、最初に成功したものが使われます。</string>
+     <string name="auto_connect_screen_help">アプリを開いたときに自動で接続する方法を設定します。使う方法をオンにして、試す順番にドラッグします。最初に成功した方法が使われます。遅延は、動作の遅い機器で Wi-Fi が起動するまでの時間を確保します。自分で開始した接続はここでは変わりません。保存で変更を適用します。</string>
+     <string name="dpi_screen_help">Android Auto が描画する画素密度を設定します。DPI を上げるとアイコンと文字が大きくなり、画面に入る量は減ります。DPI を下げると小さくなり、多く入ります。自動はこの機器の密度を使います。新しい値は次回の接続から有効です。</string>
+-    <string name="keymap_screen_help">この機器のキーやボタンに操作を割り当てます。Android Auto のキー、投影画面の操作、アプリの起動から選べます。「キー割り当てを追加」をタップしてキーを押し、操作を選びます。割り当てをタップすると変更や解除ができます。リセットはすべての割り当てを削除します。</string>
++    <string name="keymap_screen_help">この機器のキーやボタンに操作を割り当てます。Android Auto のキー、投影画面の操作、アプリの起動から選べます。「キー割り当てを追加」をタップしてキーを押し、操作を選びます。割り当てをタップすると変更や解除ができます。リセットはすべての割り当てを削除します。 「何もしない」はキーを Android Auto に届けません。たとえば車の純正システム用のハンドルのキーに使います。</string>
+     <string name="customization_screen_help">このアプリのホーム画面の見た目を変更します。背景画像、4 つのボタンの色とサイズ、文字サイズが対象です。夜間設定はダークモードの背景を制御します。Android Auto の投影内容は変わりません。</string>
+     <string name="loading_screen_screen_help">Android Auto の起動中に表示する画像または短い動画を設定します。10 MB までの画像か動画を選び、画面に合わせて拡大縮小し、短いアニメーションはループさせます。起動テキストを非表示にもできます。削除でデフォルトの画面に戻ります。</string>
+     <string name="auto_connect_priority">優先度 %d</string>
+@@ -480,6 +480,7 @@
+     <string name="key_assigned">「%1$s」を「%2$s」に割り当てました</string>
+     <string name="action_picker_title">操作を選択</string>
+     <string name="action_remove_binding">割り当てを解除</string>
++    <string name="action_do_nothing">何もしない</string>
+     <string name="action_section_projection">投影画面</string>
+     <string name="action_section_aa_keys">Android Auto のキー</string>
+     <string name="action_section_apps">アプリ</string>
+diff --git a/app/src/main/res/values-ka/strings.xml b/app/src/main/res/values-ka/strings.xml
+index a4982c10..f908ea77 100644
+--- a/app/src/main/res/values-ka/strings.xml
++++ b/app/src/main/res/values-ka/strings.xml
+@@ -377,7 +377,7 @@
+     <string name="auto_connect_help">ეს მეთოდები ავტომატურად ეშვება აპის გახსნისას. ჩართეთ სასურველი მეთოდები, შემდეგ გადაათრიეთ რიგითობის დასაყენებლად. გამოყენებული იქნება პირველივე ჩართული მეთოდი, რომელიც წარმატებით დაუკავშირდება.</string>
+     <string name="auto_connect_screen_help">განსაზღვრავს, როგორ უკავშირდება აპი თავისით გახსნისას. ჩართეთ სასურველი მეთოდები და გადაათრიეთ საცდელი თანმიმდევრობით. გამოიყენება პირველი წარმატებული მეთოდი. შეყოვნება Wi-Fi-ს აძლევს გაღვიძების დროს ნელ მოწყობილობაზე. აქ არაფერი ცვლის თქვენ მიერ დაწყებულ კავშირს. „შენახვა“ ცვლილებებს ამოქმედებს.</string>
+     <string name="dpi_screen_help">ადგენს პიქსელების სიმკვრივეს, რომლითაც Android Auto ხატავს. მაღალი DPI ზრდის ხატულებსა და ტექსტს, ამიტომ ეკრანზე ნაკლები ეტევა. დაბალი DPI მათ ამცირებს, ამიტომ მეტი ეტევა. „ავტომატური“ იყენებს ამ მოწყობილობის სიმკვრივეს. ახალი მნიშვნელობა მოქმედებს შემდეგი კავშირიდან.</string>
+-    <string name="keymap_screen_help">ამ მოწყობილობის კლავიშებსა და ღილაკებს ანიჭებს მოქმედებებს: Android Auto-ს კლავიშს, პროექციის ეკრანის მოქმედებას ან აპის გაშვებას. შეეხეთ „კლავიშის მინიჭების დამატებას“, დააჭირეთ კლავიშს და აირჩიეთ მოქმედება. შეეხეთ მინიჭებას მის შესაცვლელად ან წასაშლელად. „გადაყენება“ შლის ყველა მინიჭებას.</string>
++    <string name="keymap_screen_help">ამ მოწყობილობის კლავიშებსა და ღილაკებს ანიჭებს მოქმედებებს: Android Auto-ს კლავიშს, პროექციის ეკრანის მოქმედებას ან აპის გაშვებას. შეეხეთ „კლავიშის მინიჭების დამატებას“, დააჭირეთ კლავიშს და აირჩიეთ მოქმედება. შეეხეთ მინიჭებას მის შესაცვლელად ან წასაშლელად. „გადაყენება“ შლის ყველა მინიჭებას. „არაფრის გაკეთება“ კლავიშს Android Auto-მდე არ უშვებს, მაგალითად მანქანის ქარხნული სისტემისთვის განკუთვნილ საჭის ღილაკს.</string>
+     <string name="customization_screen_help">ცვლის ამ აპის მთავარი ეკრანის იერს: ფონის სურათს, ოთხი ღილაკის ფერებსა და ზომას და ტექსტის ზომას. ღამის პარამეტრი მართავს ფონს მუქ რეჟიმში. ეს არაფერი ცვლის იმას, რასაც Android Auto პროექციაზე აჩვენებს.</string>
+     <string name="loading_screen_screen_help">ადგენს სურათს ან მოკლე ვიდეოს, რომელიც Android Auto-ს გაშვებისას გამოჩნდება. აირჩიეთ სურათი ან ვიდეო 10 მბ-მდე, მოარგეთ ეკრანს და მოკლე ანიმაციები ციკლში გაუშვით. ასევე შეგიძლიათ საწყისი ტექსტის დამალვა. „წაშლა“ აბრუნებს ნაგულისხმევ ეკრანს.</string>
+     <string name="auto_connect_priority">პრიორიტეტი %d</string>
+@@ -498,6 +498,7 @@
+     <string name="key_assigned">\'%1$s\' მიენიჭა ღილაკს \'%2$s\'</string>
+     <string name="action_picker_title">აირჩიეთ მოქმედება</string>
+     <string name="action_remove_binding">მინიჭების წაშლა</string>
++    <string name="action_do_nothing">არაფრის გაკეთება</string>
+     <string name="action_section_projection">პროექციის ეკრანი</string>
+     <string name="action_section_aa_keys">Android Auto-ს კლავიშები</string>
+     <string name="action_section_apps">აპები</string>
+diff --git a/app/src/main/res/values-ko/strings.xml b/app/src/main/res/values-ko/strings.xml
+index 7a62d880..e6fb0f93 100644
+--- a/app/src/main/res/values-ko/strings.xml
++++ b/app/src/main/res/values-ko/strings.xml
+@@ -389,7 +389,7 @@
+     <string name="auto_connect_help">앱을 열면 이 연결 방법들이 자동으로 실행됩니다. 원하는 방법을 사용 설정한 뒤 드래그하여 순서를 정하세요. 사용 설정된 방법 중 가장 먼저 연결에 성공한 방법을 사용합니다.</string>
+     <string name="auto_connect_screen_help">앱을 열 때 스스로 연결하는 방법을 설정합니다. 원하는 방법을 사용 설정하고 시도할 순서대로 끌어 놓으세요. 처음으로 성공한 방법이 사용됩니다. 지연 시간은 느린 기기에서 Wi-Fi가 깨어날 시간을 줍니다. 직접 시작한 연결은 여기서 바뀌지 않습니다. 저장을 누르면 변경사항이 적용됩니다.</string>
+     <string name="dpi_screen_help">Android Auto가 화면을 그릴 때 쓰는 픽셀 밀도를 설정합니다. DPI가 높으면 아이콘과 글자가 커져서 화면에 들어가는 내용이 줄어듭니다. DPI가 낮으면 작아져서 더 많이 들어갑니다. 자동은 이 기기의 밀도를 사용합니다. 새 값은 다음 연결부터 적용됩니다.</string>
+-    <string name="keymap_screen_help">이 기기의 키와 버튼에 동작을 할당합니다. Android Auto 키, 프로젝션 화면 동작, 앱 실행 중에서 고를 수 있습니다. 키 할당 추가를 탭하고 키를 누른 다음 동작을 선택하세요. 할당을 탭하면 변경하거나 해제할 수 있습니다. 초기화하면 모든 할당이 삭제됩니다.</string>
++    <string name="keymap_screen_help">이 기기의 키와 버튼에 동작을 할당합니다. Android Auto 키, 프로젝션 화면 동작, 앱 실행 중에서 고를 수 있습니다. 키 할당 추가를 탭하고 키를 누른 다음 동작을 선택하세요. 할당을 탭하면 변경하거나 해제할 수 있습니다. 초기화하면 모든 할당이 삭제됩니다. 아무것도 안 함은 키가 Android Auto에 전달되지 않게 합니다. 예를 들어 차량 순정 시스템용 스티어링 휠 키에 사용하세요.</string>
+     <string name="customization_screen_help">이 앱 홈 화면의 모양을 변경합니다. 배경 이미지, 버튼 4개의 색상과 크기, 글자 크기가 해당됩니다. 야간 설정은 다크 모드의 배경을 제어합니다. 이 중 어느 것도 Android Auto가 투사 화면에 표시하는 내용을 바꾸지 않습니다.</string>
+     <string name="loading_screen_screen_help">Android Auto가 시작되는 동안 표시할 이미지나 짧은 동영상을 설정합니다. 10MB 이하의 이미지나 동영상을 선택하고, 화면에 맞게 크기를 조정하며, 짧은 애니메이션은 반복 재생할 수 있습니다. 시작 문구를 숨길 수도 있습니다. 제거하면 기본 화면으로 돌아갑니다.</string>
+     <string name="auto_connect_priority">우선순위 %d</string>
+@@ -515,6 +515,7 @@
+     <string name="key_assigned">\'%2$s\'에 \'%1$s\' 키를 할당했습니다.</string>
+     <string name="action_picker_title">동작 선택</string>
+     <string name="action_remove_binding">할당 해제</string>
++    <string name="action_do_nothing">아무것도 안 함</string>
+     <string name="action_section_projection">프로젝션 화면</string>
+     <string name="action_section_aa_keys">Android Auto 키</string>
+     <string name="action_section_apps">앱</string>
+diff --git a/app/src/main/res/values-nl/strings.xml b/app/src/main/res/values-nl/strings.xml
+index 3fadc130..9e799d92 100644
+--- a/app/src/main/res/values-nl/strings.xml
++++ b/app/src/main/res/values-nl/strings.xml
+@@ -341,7 +341,7 @@
+     <string name="auto_connect_help">Deze methoden worden automatisch uitgevoerd bij het openen van de app. Schakel de gewenste in en sleep om de volgorde te bepalen. De eerste ingeschakelde methode die slaagt, wordt gebruikt.</string>
+     <string name="auto_connect_screen_help">Bepaalt hoe de app zichzelf verbindt bij het openen. Schakel de gewenste methoden in en sleep ze in de volgorde waarin ze worden geprobeerd. De eerste die lukt wordt gebruikt. De vertraging geeft wifi tijd om wakker te worden op een traag apparaat. Niets hier verandert een verbinding die je zelf start. Met Opslaan worden de wijzigingen toegepast.</string>
+     <string name="dpi_screen_help">Bepaalt de pixeldichtheid waarmee Android Auto tekent. Een hogere DPI maakt pictogrammen en tekst groter, zodat er minder op het scherm past. Een lagere DPI maakt ze kleiner, zodat er meer op past. Automatisch gebruikt de dichtheid van dit apparaat. De nieuwe waarde geldt bij de volgende verbinding.</string>
+-    <string name="keymap_screen_help">Wijst de toetsen en knoppen van dit apparaat toe aan acties: een Android Auto-toets, een actie van het projectiescherm of het starten van een app. Tik op Toetstoewijzing toevoegen, druk op de toets en kies de actie. Tik op een toewijzing om die te wijzigen of te verwijderen. Reset verwijdert alle toewijzingen.</string>
++    <string name="keymap_screen_help">Wijst de toetsen en knoppen van dit apparaat toe aan acties: een Android Auto-toets, een actie van het projectiescherm of het starten van een app. Tik op Toetstoewijzing toevoegen, druk op de toets en kies de actie. Tik op een toewijzing om die te wijzigen of te verwijderen. Reset verwijdert alle toewijzingen. Niets doen houdt een toets weg van Android Auto, bijvoorbeeld een stuurtoets voor het eigen systeem van de auto.</string>
+     <string name="customization_screen_help">Verandert hoe het startscherm van deze app eruitziet: de achtergrondafbeelding, de kleuren en grootte van de vier knoppen en de tekstgrootte. De nachtinstelling bepaalt de achtergrond in de donkere modus. Niets hiervan verandert wat Android Auto in de projectie toont.</string>
+     <string name="loading_screen_screen_help">Bepaalt de afbeelding of korte video die wordt getoond terwijl Android Auto start. Kies een afbeelding of video tot 10 MB, schaal die naar het scherm en laat korte animaties herhalen. Je kunt ook de starttekst verbergen. Verwijderen herstelt het standaardscherm.</string>
+     <string name="auto_connect_priority">Prioriteit %d</string>
+@@ -447,6 +447,7 @@
+     <string name="key_assigned">\'%1$s\' toegewezen aan \'%2$s\'</string>
+     <string name="action_picker_title">Actie kiezen</string>
+     <string name="action_remove_binding">Toewijzing verwijderen</string>
++    <string name="action_do_nothing">Niets doen</string>
+     <string name="action_section_projection">Projectiescherm</string>
+     <string name="action_section_aa_keys">Android Auto-toetsen</string>
+     <string name="action_section_apps">Apps</string>
+diff --git a/app/src/main/res/values-pl/strings.xml b/app/src/main/res/values-pl/strings.xml
+index 5379bb6d..3e639d0f 100644
+--- a/app/src/main/res/values-pl/strings.xml
++++ b/app/src/main/res/values-pl/strings.xml
+@@ -342,7 +342,7 @@
+     <string name="auto_connect_help">Te metody uruchamiają się automatycznie przy otwieraniu aplikacji. Włącz te, które chcesz, i przeciągnij, aby ustawić kolejność. Zostanie użyta pierwsza włączona metoda, która się powiedzie.</string>
+     <string name="auto_connect_screen_help">Określa, jak aplikacja łączy się sama po otwarciu. Włącz wybrane metody i przeciągnij je w kolejności prób. Użyta zostanie pierwsza, która się powiedzie. Opóźnienie daje Wi-Fi czas na wybudzenie na wolnej stacji. Nic tutaj nie zmienia połączenia, które uruchamiasz sam. Zapisz stosuje zmiany.</string>
+     <string name="dpi_screen_help">Ustawia gęstość pikseli, z jaką rysuje Android Auto. Wyższe DPI powiększa ikony i tekst, więc na ekranie mieści się mniej. Niższe DPI je zmniejsza, więc mieści się więcej. Automatyczne używa gęstości tego urządzenia. Nowa wartość obowiązuje od następnego połączenia.</string>
+-    <string name="keymap_screen_help">Przypisuje klawisze i przyciski tej stacji do działań: klawisza Android Auto, działania ekranu projekcji lub uruchomienia aplikacji. Dotknij Dodaj przypisanie klawisza, naciśnij klawisz i wybierz działanie. Dotknij przypisania, aby je zmienić lub usunąć. Resetuj usuwa wszystkie przypisania.</string>
++    <string name="keymap_screen_help">Przypisuje klawisze i przyciski tej stacji do działań: klawisza Android Auto, działania ekranu projekcji lub uruchomienia aplikacji. Dotknij Dodaj przypisanie klawisza, naciśnij klawisz i wybierz działanie. Dotknij przypisania, aby je zmienić lub usunąć. Resetuj usuwa wszystkie przypisania. Nic nie rób sprawia, że klawisz nie trafia do Android Auto, na przykład przycisk na kierownicy przeznaczony dla fabrycznego systemu auta.</string>
+     <string name="customization_screen_help">Zmienia wygląd ekranu głównego tej aplikacji: obraz tła, kolory i rozmiar czterech przycisków oraz rozmiar tekstu. Ustawienie nocne steruje tłem w trybie ciemnym. Nic z tego nie zmienia tego, co Android Auto pokazuje w projekcji.</string>
+     <string name="loading_screen_screen_help">Ustawia obraz lub krótki film pokazywany podczas uruchamiania Android Auto. Wybierz obraz lub film do 10 MB, dopasuj go do ekranu i zapętl krótkie animacje. Możesz też ukryć tekst startowy. Usuń przywraca ekran domyślny.</string>
+     <string name="auto_connect_priority">Priorytet %d</string>
+@@ -448,6 +448,7 @@
+     <string name="key_assigned">\'%1$s\' przypisano do \'%2$s\'</string>
+     <string name="action_picker_title">Wybierz działanie</string>
+     <string name="action_remove_binding">Usuń przypisanie</string>
++    <string name="action_do_nothing">Nic nie rób</string>
+     <string name="action_section_projection">Ekran projekcji</string>
+     <string name="action_section_aa_keys">Klawisze Android Auto</string>
+     <string name="action_section_apps">Aplikacje</string>
+diff --git a/app/src/main/res/values-pt-rBR/strings.xml b/app/src/main/res/values-pt-rBR/strings.xml
+index 01e2957f..29d1e78d 100644
+--- a/app/src/main/res/values-pt-rBR/strings.xml
++++ b/app/src/main/res/values-pt-rBR/strings.xml
+@@ -342,7 +342,7 @@
+     <string name="auto_connect_help">Estes métodos são executados automaticamente ao abrir o app. Ative os que desejar e arraste para definir a ordem. O primeiro método ativo que tiver sucesso será usado.</string>
+     <string name="auto_connect_screen_help">Define como o app se conecta sozinho ao abrir. Ative os métodos que quiser e arraste na ordem em que serão tentados. O primeiro que funcionar é usado. O atraso dá tempo para o Wi-Fi acordar em uma unidade lenta. Nada aqui altera uma conexão que você inicia. Salvar aplica as mudanças.</string>
+     <string name="dpi_screen_help">Define a densidade de pixels com que o Android Auto desenha. Um DPI maior deixa ícones e texto maiores, e cabe menos na tela. Um DPI menor os deixa menores, e cabe mais. Automático usa a densidade deste dispositivo. O novo valor vale a partir da próxima conexão.</string>
+-    <string name="keymap_screen_help">Atribui as teclas e os botões desta unidade a ações: uma tecla do Android Auto, uma ação da tela de projeção ou abrir um app. Toque em Adicionar atribuição de tecla, pressione a tecla e escolha a ação. Toque em uma atribuição para alterá-la ou removê-la. Redefinir remove todas as atribuições.</string>
++    <string name="keymap_screen_help">Atribui as teclas e os botões desta unidade a ações: uma tecla do Android Auto, uma ação da tela de projeção ou abrir um app. Toque em Adicionar atribuição de tecla, pressione a tecla e escolha a ação. Toque em uma atribuição para alterá-la ou removê-la. Redefinir remove todas as atribuições. Não fazer nada impede que uma tecla chegue ao Android Auto, por exemplo uma tecla do volante feita para o sistema original do carro.</string>
+     <string name="customization_screen_help">Muda a aparência da tela inicial deste app: a imagem de fundo, as cores e o tamanho dos quatro botões e o tamanho do texto. A configuração noturna controla o fundo no modo escuro. Nada disso muda o que o Android Auto mostra na projeção.</string>
+     <string name="loading_screen_screen_help">Define a imagem ou o vídeo curto exibido enquanto o Android Auto inicia. Escolha uma imagem ou um vídeo de até 10 MB, ajuste à tela e repita animações curtas em loop. Também dá para ocultar o texto de inicialização. Remover volta à tela padrão.</string>
+     <string name="auto_connect_priority">Prioridade %d</string>
+@@ -448,6 +448,7 @@
+     <string name="key_assigned">\'%1$s\' atribuído a \'%2$s\'</string>
+     <string name="action_picker_title">Escolher ação</string>
+     <string name="action_remove_binding">Remover atribuição</string>
++    <string name="action_do_nothing">Não fazer nada</string>
+     <string name="action_section_projection">Tela de projeção</string>
+     <string name="action_section_aa_keys">Teclas do Android Auto</string>
+     <string name="action_section_apps">Aplicativos</string>
+diff --git a/app/src/main/res/values-pt-rPT/strings.xml b/app/src/main/res/values-pt-rPT/strings.xml
+index 1af7673a..08401524 100644
+--- a/app/src/main/res/values-pt-rPT/strings.xml
++++ b/app/src/main/res/values-pt-rPT/strings.xml
+@@ -669,7 +669,7 @@
+     <string name="auto_connect_help">Estes métodos são executados automaticamente quando a aplicação abre. Ative os que pretende e arraste para definir a ordem. É utilizado o primeiro método ativado que tiver êxito.</string>
+     <string name="auto_connect_screen_help">Define como a aplicação se liga sozinha ao abrir. Ative os métodos pretendidos e arraste-os pela ordem em que serão tentados. É usado o primeiro que funcionar. O atraso dá tempo ao Wi-Fi para acordar numa unidade lenta. Nada aqui altera uma ligação que inicie por si. Guardar aplica as alterações.</string>
+     <string name="dpi_screen_help">Define a densidade de píxeis com que o Android Auto desenha. Um DPI mais alto aumenta ícones e texto, e cabe menos no ecrã. Um DPI mais baixo reduz-os, e cabe mais. Automático usa a densidade deste dispositivo. O novo valor aplica-se na próxima ligação.</string>
+-    <string name="keymap_screen_help">Atribui as teclas e os botões desta unidade a ações: uma tecla do Android Auto, uma ação do ecrã de projeção ou abrir uma app. Toque em Adicionar atribuição de tecla, prima a tecla e escolha a ação. Toque numa atribuição para a alterar ou remover. Repor remove todas as atribuições.</string>
++    <string name="keymap_screen_help">Atribui as teclas e os botões desta unidade a ações: uma tecla do Android Auto, uma ação do ecrã de projeção ou abrir uma app. Toque em Adicionar atribuição de tecla, prima a tecla e escolha a ação. Toque numa atribuição para a alterar ou remover. Repor remove todas as atribuições. Não fazer nada impede que uma tecla chegue ao Android Auto, por exemplo uma tecla do volante destinada ao sistema original do carro.</string>
+     <string name="customization_screen_help">Altera o aspeto do ecrã inicial desta aplicação: a imagem de fundo, as cores e o tamanho dos quatro botões e o tamanho do texto. A definição noturna controla o fundo no modo escuro. Nada disto altera o que o Android Auto mostra na projeção.</string>
+     <string name="loading_screen_screen_help">Define a imagem ou o vídeo curto mostrado enquanto o Android Auto arranca. Escolha uma imagem ou um vídeo até 10 MB, ajuste ao ecrã e repita animações curtas em ciclo. Também pode ocultar o texto de arranque. Remover volta ao ecrã predefinido.</string>
+     <string name="auto_connect_priority">Prioridade %d</string>
+@@ -940,6 +940,7 @@
+     <string name="key_assigned">\'%1$s\' atribuído a \'%2$s\'</string>
+     <string name="action_picker_title">Escolher ação</string>
+     <string name="action_remove_binding">Remover atribuição</string>
++    <string name="action_do_nothing">Não fazer nada</string>
+     <string name="action_section_projection">Ecrã de projeção</string>
+     <string name="action_section_aa_keys">Teclas do Android Auto</string>
+     <string name="action_section_apps">Aplicações</string>
+diff --git a/app/src/main/res/values-ro/strings.xml b/app/src/main/res/values-ro/strings.xml
+index 482565e8..8865fbe4 100644
+--- a/app/src/main/res/values-ro/strings.xml
++++ b/app/src/main/res/values-ro/strings.xml
+@@ -368,7 +368,7 @@
+     <string name="auto_connect_help">Aceste metode rulează automat la deschiderea aplicației. Activează-le pe cele dorite, apoi trage de ele pentru a le ordona. Se va folosi prima metodă reușită.</string>
+     <string name="auto_connect_screen_help">Stabilește cum se conectează aplicația singură la deschidere. Activează metodele dorite și trage-le în ordinea de încercare. Se folosește prima care reușește. Întârzierea dă timp Wi-Fi-ului să se trezească pe o unitate lentă. Nimic de aici nu schimbă o conexiune pornită de tine. Cu Salvează se aplică modificările.</string>
+     <string name="dpi_screen_help">Stabilește densitatea de pixeli cu care desenează Android Auto. Un DPI mai mare mărește pictogramele și textul, deci încape mai puțin pe ecran. Un DPI mai mic le micșorează, deci încape mai mult. Automat folosește densitatea acestui dispozitiv. Valoarea nouă se aplică la următoarea conectare.</string>
+-    <string name="keymap_screen_help">Asociază tastele și butoanele acestei unități cu acțiuni: o tastă Android Auto, o acțiune a ecranului de proiecție sau deschiderea unei aplicații. Atinge Adaugă asociere de tastă, apasă tasta, apoi alege acțiunea. Atinge o asociere ca s-o modifici sau s-o elimini. Resetează șterge toate asocierile.</string>
++    <string name="keymap_screen_help">Asociază tastele și butoanele acestei unități cu acțiuni: o tastă Android Auto, o acțiune a ecranului de proiecție sau deschiderea unei aplicații. Atinge Adaugă asociere de tastă, apasă tasta, apoi alege acțiunea. Atinge o asociere ca s-o modifici sau s-o elimini. Resetează șterge toate asocierile. Nu face nimic oprește o tastă să ajungă la Android Auto, de exemplu o tastă de pe volan destinată sistemului original al mașinii.</string>
+     <string name="customization_screen_help">Schimbă aspectul ecranului de start al acestei aplicații: imaginea de fundal, culorile și dimensiunea celor patru butoane și dimensiunea textului. Setarea de noapte controlează fundalul în modul întunecat. Nimic din toate acestea nu schimbă ce afișează Android Auto în proiecție.</string>
+     <string name="loading_screen_screen_help">Stabilește imaginea sau videoclipul scurt afișat cât pornește Android Auto. Alege o imagine sau un videoclip de până la 10 MB, scalează-l pe ecran și repetă animațiile scurte în buclă. Poți ascunde și textul de pornire. Cu Elimină se revine la ecranul implicit.</string>
+     <string name="auto_connect_priority">Prioritate %d</string>
+@@ -474,6 +474,7 @@
+     <string name="key_assigned">\'%1$s\' a fost asociat cu \'%2$s\'</string>
+     <string name="action_picker_title">Alege acțiunea</string>
+     <string name="action_remove_binding">Elimină asocierea</string>
++    <string name="action_do_nothing">Nu face nimic</string>
+     <string name="action_section_projection">Ecran de proiecție</string>
+     <string name="action_section_aa_keys">Taste Android Auto</string>
+     <string name="action_section_apps">Aplicații</string>
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index 7c8a3b01..d6ca463b 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml
+@@ -346,7 +346,7 @@
+     <string name="auto_connect_help">Эти методы запускаются автоматически при открытии приложения. Включите нужные и перетащите для установки порядка. Будет использован первый включённый метод, который сработает.</string>
+     <string name="auto_connect_screen_help">Определяет, как приложение подключается само при открытии. Включите нужные способы и перетащите их в порядке попыток. Используется первый успешный. Задержка даёт Wi-Fi время проснуться на медленном устройстве. Ничто здесь не меняет подключение, которое вы запускаете сами. Кнопка «Сохранить» применяет изменения.</string>
+     <string name="dpi_screen_help">Задаёт плотность пикселей, с которой рисует Android Auto. Больший DPI увеличивает значки и текст, поэтому на экране помещается меньше. Меньший DPI уменьшает их, и помещается больше. «Автоматически» берёт плотность этого устройства. Новое значение действует со следующего подключения.</string>
+-    <string name="keymap_screen_help">Назначает клавиши и кнопки этого устройства на действия: клавишу Android Auto, действие экрана проекции или запуск приложения. Коснитесь «Добавить назначение клавиши», нажмите клавишу и выберите действие. Коснитесь назначения, чтобы изменить или удалить его. «Сброс» удаляет все назначения.</string>
++    <string name="keymap_screen_help">Назначает клавиши и кнопки этого устройства на действия: клавишу Android Auto, действие экрана проекции или запуск приложения. Коснитесь «Добавить назначение клавиши», нажмите клавишу и выберите действие. Коснитесь назначения, чтобы изменить или удалить его. «Сброс» удаляет все назначения. «Ничего не делать» не пропускает клавишу в Android Auto, например кнопку руля, предназначенную для штатной системы автомобиля.</string>
+     <string name="customization_screen_help">Меняет вид главного экрана приложения: фоновое изображение, цвета и размер четырёх кнопок, размер текста. Ночная настройка задаёт фон в тёмном режиме. Ничто из этого не меняет то, что Android Auto показывает в проекции.</string>
+     <string name="loading_screen_screen_help">Задаёт картинку или короткое видео, которое показывается при запуске Android Auto. Выберите изображение или видео до 10 МБ, подгоните под экран и зациклите короткую анимацию. Можно также скрыть текст запуска. «Удалить» возвращает экран по умолчанию.</string>
+     <string name="auto_connect_priority">Приоритет %d</string>
+@@ -450,6 +450,7 @@ Open Headunit предоставляется «как есть» без каки
+     <string name="key_assigned">Клавиша «%1$s» назначена на «%2$s»</string>
+     <string name="action_picker_title">Выберите действие</string>
+     <string name="action_remove_binding">Удалить назначение</string>
++    <string name="action_do_nothing">Ничего не делать</string>
+     <string name="action_section_projection">Экран проекции</string>
+     <string name="action_section_aa_keys">Клавиши Android Auto</string>
+     <string name="action_section_apps">Приложения</string>
+diff --git a/app/src/main/res/values-th/strings.xml b/app/src/main/res/values-th/strings.xml
+index 1aee848c..2575de1b 100644
+--- a/app/src/main/res/values-th/strings.xml
++++ b/app/src/main/res/values-th/strings.xml
+@@ -668,7 +668,7 @@
+     <string name="auto_connect_help">วิธีเหล่านี้ทำงานอัตโนมัติเมื่อเปิดแอป เปิดวิธีที่ต้องการ แล้วลากเพื่อจัดลำดับ ระบบจะใช้วิธีแรกที่เปิดอยู่และเชื่อมต่อสำเร็จ</string>
+     <string name="auto_connect_screen_help">กำหนดวิธีที่แอปเชื่อมต่อเองเมื่อเปิด เปิดวิธีที่ต้องการแล้วลากเรียงตามลำดับที่จะลอง ระบบจะใช้วิธีแรกที่สำเร็จ การหน่วงเวลาให้ Wi-Fi มีเวลาตื่นบนเครื่องที่ช้า ไม่มีส่วนใดในนี้เปลี่ยนการเชื่อมต่อที่คุณเริ่มเอง แตะบันทึกเพื่อใช้การเปลี่ยนแปลง</string>
+     <string name="dpi_screen_help">กำหนดความหนาแน่นพิกเซลที่ Android Auto ใช้วาด DPI สูงทำให้ไอคอนและข้อความใหญ่ขึ้น จึงแสดงได้น้อยลง DPI ต่ำทำให้เล็กลง จึงแสดงได้มากขึ้น อัตโนมัติจะใช้ความหนาแน่นของอุปกรณ์นี้ ค่าใหม่จะมีผลในการเชื่อมต่อครั้งถัดไป</string>
+-    <string name="keymap_screen_help">กำหนดการทำงานให้ปุ่มของเครื่องนี้: ปุ่ม Android Auto การทำงานบนหน้าจอฉายภาพ หรือการเปิดแอป แตะ เพิ่มการกำหนดปุ่ม กดปุ่ม แล้วเลือกการทำงาน แตะการกำหนดเพื่อเปลี่ยนหรือลบ รีเซ็ตจะลบการกำหนดทั้งหมด</string>
++    <string name="keymap_screen_help">กำหนดการทำงานให้ปุ่มของเครื่องนี้: ปุ่ม Android Auto การทำงานบนหน้าจอฉายภาพ หรือการเปิดแอป แตะ เพิ่มการกำหนดปุ่ม กดปุ่ม แล้วเลือกการทำงาน แตะการกำหนดเพื่อเปลี่ยนหรือลบ รีเซ็ตจะลบการกำหนดทั้งหมด ไม่ต้องทำอะไร จะไม่ส่งปุ่มไปยัง Android Auto เช่น ปุ่มบนพวงมาลัยที่ใช้กับระบบเดิมของรถ</string>
+     <string name="customization_screen_help">เปลี่ยนรูปลักษณ์ของหน้าจอหลักของแอปนี้ ได้แก่ รูปพื้นหลัง สีและขนาดของปุ่มทั้งสี่ และขนาดข้อความ การตั้งค่ากลางคืนควบคุมพื้นหลังในโหมดมืด ทั้งหมดนี้ไม่เปลี่ยนสิ่งที่ Android Auto แสดงในการฉายภาพ</string>
+     <string name="loading_screen_screen_help">กำหนดรูปภาพหรือวิดีโอสั้นที่แสดงขณะ Android Auto เริ่มทำงาน เลือกรูปภาพหรือวิดีโอไม่เกิน 10 MB ปรับขนาดให้พอดีหน้าจอ และวนซ้ำภาพเคลื่อนไหวสั้น ๆ นอกจากนี้ยังซ่อนข้อความตอนเริ่มได้ ลบจะกลับไปที่หน้าจอเริ่มต้น</string>
+     <string name="auto_connect_priority">ลำดับความสำคัญ %d</string>
+@@ -940,6 +940,7 @@
+     <string name="key_assigned">กำหนด \'%1$s\' ให้กับ \'%2$s\' แล้ว</string>
+     <string name="action_picker_title">เลือกการทำงาน</string>
+     <string name="action_remove_binding">ลบการกำหนด</string>
++    <string name="action_do_nothing">ไม่ต้องทำอะไร</string>
+     <string name="action_section_projection">หน้าจอฉายภาพ</string>
+     <string name="action_section_aa_keys">ปุ่ม Android Auto</string>
+     <string name="action_section_apps">แอปพลิเคชัน</string>
+diff --git a/app/src/main/res/values-tr/strings.xml b/app/src/main/res/values-tr/strings.xml
+index bdf99f9a..d6bbeeea 100644
+--- a/app/src/main/res/values-tr/strings.xml
++++ b/app/src/main/res/values-tr/strings.xml
+@@ -369,7 +369,7 @@
+     <string name="auto_connect_help">Bu yöntemler uygulama açıldığında otomatik olarak çalışır. İstediklerinizi etkinleştirin, ardından sırayı ayarlamak için sürükleyin. Başarılı olan ilk etkin yöntem kullanılacaktır.</string>
+     <string name="auto_connect_screen_help">Uygulamanın açılışta kendi kendine nasıl bağlanacağını belirler. İstediğiniz yöntemleri açın ve denenecekleri sıraya sürükleyin. Başarılı olan ilk yöntem kullanılır. Gecikme, yavaş bir ünitede Wi-Fi\'ye uyanma süresi tanır. Burada hiçbir şey sizin başlattığınız bağlantıyı değiştirmez. Kaydet değişiklikleri uygular.</string>
+     <string name="dpi_screen_help">Android Auto\'nun çizim yaptığı piksel yoğunluğunu belirler. Yüksek DPI simgeleri ve metni büyütür, ekrana daha az şey sığar. Düşük DPI bunları küçültür, daha fazla şey sığar. Otomatik, bu cihazın yoğunluğunu kullanır. Yeni değer bir sonraki bağlantıda uygulanır.</string>
+-    <string name="keymap_screen_help">Bu ünitenin tuşlarını ve düğmelerini eylemlere atar: bir Android Auto tuşu, yansıtma ekranı eylemi veya bir uygulamayı başlatma. Tuş ataması ekle\'ye dokunun, tuşa basın, ardından eylemi seçin. Değiştirmek veya kaldırmak için bir atamaya dokunun. Sıfırla tüm atamaları kaldırır.</string>
++    <string name="keymap_screen_help">Bu ünitenin tuşlarını ve düğmelerini eylemlere atar: bir Android Auto tuşu, yansıtma ekranı eylemi veya bir uygulamayı başlatma. Tuş ataması ekle\'ye dokunun, tuşa basın, ardından eylemi seçin. Değiştirmek veya kaldırmak için bir atamaya dokunun. Sıfırla tüm atamaları kaldırır. Hiçbir şey yapma, bir tuşun Android Auto\'ya ulaşmasını engeller; örneğin aracın kendi sistemi için olan bir direksiyon tuşu.</string>
+     <string name="customization_screen_help">Bu uygulamanın ana ekranının görünümünü değiştirir: arka plan resmi, dört düğmenin renkleri ve boyutu ile metin boyutu. Gece ayarı, karanlık moddaki arka planı belirler. Bunların hiçbiri Android Auto\'nun yansıtmada gösterdiklerini değiştirmez.</string>
+     <string name="loading_screen_screen_help">Android Auto başlarken gösterilen resmi veya kısa videoyu belirler. 10 MB\'a kadar bir resim ya da video seçin, ekrana sığacak şekilde ölçekleyin ve kısa animasyonları döngüye alın. Başlangıç metnini de gizleyebilirsiniz. Kaldır, varsayılan ekrana döner.</string>
+     <string name="auto_connect_priority">Öncelik %d</string>
+@@ -471,6 +471,7 @@
+     <string name="key_assigned">\'%1$s\', \'%2$s\' tuşuna atandı</string>
+     <string name="action_picker_title">Eylem seç</string>
+     <string name="action_remove_binding">Atamayı kaldır</string>
++    <string name="action_do_nothing">Hiçbir şey yapma</string>
+     <string name="action_section_projection">Yansıtma ekranı</string>
+     <string name="action_section_aa_keys">Android Auto tuşları</string>
+     <string name="action_section_apps">Uygulamalar</string>
+diff --git a/app/src/main/res/values-uk/strings.xml b/app/src/main/res/values-uk/strings.xml
+index ea291617..fd8b57bb 100644
+--- a/app/src/main/res/values-uk/strings.xml
++++ b/app/src/main/res/values-uk/strings.xml
+@@ -342,7 +342,7 @@
+     <string name="auto_connect_help">Ці методи запускаються автоматично при відкритті застосунку. Увімкніть потрібні та перетягніть для встановлення порядку. Буде використано перший увімкнений метод, який спрацює.</string>
+     <string name="auto_connect_screen_help">Визначає, як застосунок підключається сам під час відкриття. Увімкніть потрібні способи й перетягніть їх у порядку спроб. Використовується перший успішний. Затримка дає Wi-Fi час прокинутися на повільному пристрої. Ніщо тут не змінює підключення, яке ви запускаєте самі. Кнопка «Зберегти» застосовує зміни.</string>
+     <string name="dpi_screen_help">Задає щільність пікселів, з якою малює Android Auto. Більший DPI збільшує значки й текст, тому на екрані вміщується менше. Менший DPI зменшує їх, і вміщується більше. «Автоматично» бере щільність цього пристрою. Нове значення діє з наступного підключення.</string>
+-    <string name="keymap_screen_help">Призначає клавіші й кнопки цього пристрою на дії: клавішу Android Auto, дію екрана проєкції або запуск додатка. Торкніться «Додати призначення клавіші», натисніть клавішу й виберіть дію. Торкніться призначення, щоб змінити або видалити його. «Скинути» видаляє всі призначення.</string>
++    <string name="keymap_screen_help">Призначає клавіші й кнопки цього пристрою на дії: клавішу Android Auto, дію екрана проєкції або запуск додатка. Торкніться «Додати призначення клавіші», натисніть клавішу й виберіть дію. Торкніться призначення, щоб змінити або видалити його. «Скинути» видаляє всі призначення. «Нічого не робити» не пропускає клавішу в Android Auto, наприклад кнопку керма, призначену для штатної системи авто.</string>
+     <string name="customization_screen_help">Змінює вигляд головного екрана застосунку: фонове зображення, кольори та розмір чотирьох кнопок і розмір тексту. Нічне налаштування задає тло в темному режимі. Ніщо з цього не змінює того, що Android Auto показує в проєкції.</string>
+     <string name="loading_screen_screen_help">Задає зображення або коротке відео, що показується під час запуску Android Auto. Виберіть зображення чи відео до 10 МБ, масштабуйте його під екран і ввімкніть повтор для короткої анімації. Можна також сховати текст запуску. «Видалити» повертає типовий екран.</string>
+     <string name="auto_connect_priority">Пріоритет %d</string>
+@@ -448,6 +448,7 @@
+     <string name="key_assigned">Клавішу «%1$s» призначено для «%2$s»</string>
+     <string name="action_picker_title">Виберіть дію</string>
+     <string name="action_remove_binding">Видалити призначення</string>
++    <string name="action_do_nothing">Нічого не робити</string>
+     <string name="action_section_projection">Екран проєкції</string>
+     <string name="action_section_aa_keys">Клавіші Android Auto</string>
+     <string name="action_section_apps">Додатки</string>
+diff --git a/app/src/main/res/values-vi/strings.xml b/app/src/main/res/values-vi/strings.xml
+index 502392ba..0186e2fe 100644
+--- a/app/src/main/res/values-vi/strings.xml
++++ b/app/src/main/res/values-vi/strings.xml
+@@ -362,7 +362,7 @@
+     <string name="auto_connect_help">Các phương thức này chạy tự động khi mở ứng dụng. Bật các mục mong muốn rồi kéo để sắp thứ tự. Phương thức đầu tiên thành công sẽ được dùng.</string>
+     <string name="auto_connect_screen_help">Đặt cách ứng dụng tự kết nối khi mở. Bật các phương thức bạn muốn và kéo chúng theo thứ tự thử. Phương thức thành công đầu tiên được dùng. Độ trễ cho Wi-Fi thời gian khởi động trên thiết bị chậm. Không mục nào ở đây thay đổi kết nối do bạn tự bắt đầu. Lưu sẽ áp dụng các thay đổi.</string>
+     <string name="dpi_screen_help">Đặt mật độ điểm ảnh mà Android Auto dùng để vẽ. DPI cao hơn làm biểu tượng và chữ lớn hơn, nên màn hình chứa được ít hơn. DPI thấp hơn làm chúng nhỏ hơn, nên chứa được nhiều hơn. Tự động dùng mật độ của thiết bị này. Giá trị mới áp dụng từ lần kết nối tiếp theo.</string>
+-    <string name="keymap_screen_help">Gán các phím và nút của thiết bị này cho thao tác: một phím Android Auto, một thao tác trên màn hình chiếu hoặc mở một ứng dụng. Chạm Thêm phép gán phím, nhấn phím rồi chọn thao tác. Chạm vào một phép gán để đổi hoặc xóa. Đặt lại xóa mọi phép gán.</string>
++    <string name="keymap_screen_help">Gán các phím và nút của thiết bị này cho thao tác: một phím Android Auto, một thao tác trên màn hình chiếu hoặc mở một ứng dụng. Chạm Thêm phép gán phím, nhấn phím rồi chọn thao tác. Chạm vào một phép gán để đổi hoặc xóa. Đặt lại xóa mọi phép gán. Không làm gì giữ phím không tới Android Auto, ví dụ phím trên vô lăng dành cho hệ thống gốc của xe.</string>
+     <string name="customization_screen_help">Đổi giao diện màn hình chính của ứng dụng này: ảnh nền, màu sắc và kích thước của bốn nút, cùng cỡ chữ. Cài đặt ban đêm điều khiển nền ở chế độ tối. Không mục nào đổi những gì Android Auto hiển thị trên màn hình chiếu.</string>
+     <string name="loading_screen_screen_help">Đặt hình ảnh hoặc video ngắn hiển thị khi Android Auto khởi động. Chọn hình ảnh hoặc video tối đa 10 MB, co giãn cho vừa màn hình và lặp lại các hoạt ảnh ngắn. Bạn cũng có thể ẩn chữ khởi động. Xóa sẽ về màn hình mặc định.</string>
+     <string name="auto_connect_priority">Ưu tiên %d</string>
+@@ -488,6 +488,7 @@
+     <string name="key_assigned">Đã gán \'%1$s\' cho \'%2$s\'</string>
+     <string name="action_picker_title">Chọn thao tác</string>
+     <string name="action_remove_binding">Xóa phép gán</string>
++    <string name="action_do_nothing">Không làm gì</string>
+     <string name="action_section_projection">Màn hình chiếu</string>
+     <string name="action_section_aa_keys">Phím Android Auto</string>
+     <string name="action_section_apps">Ứng dụng</string>
+diff --git a/app/src/main/res/values-zh-rCN/strings.xml b/app/src/main/res/values-zh-rCN/strings.xml
+index 39ea0f15..0ad8aa54 100644
+--- a/app/src/main/res/values-zh-rCN/strings.xml
++++ b/app/src/main/res/values-zh-rCN/strings.xml
+@@ -341,7 +341,7 @@
+     <string name="auto_connect_help">这些方式会在应用打开时自动执行。启用您想要的方式，然后拖动以设置顺序。系统会使用第一个成功的已启用方式。</string>
+     <string name="auto_connect_screen_help">设置应用打开时如何自动连接。开启所需的方式，并拖动排列尝试顺序。使用第一个成功的方式。延迟可让速度较慢的车机有时间唤醒 Wi-Fi。这里的设置不会影响你自己发起的连接。点按“保存”即可应用更改。</string>
+     <string name="dpi_screen_help">设置 Android Auto 绘制时使用的像素密度。DPI 越高，图标和文字越大，屏幕容纳的内容越少。DPI 越低，图标和文字越小，容纳的内容越多。“自动”使用本设备的密度。新值将在下次连接时生效。</string>
+-    <string name="keymap_screen_help">将本车机的按键绑定到操作：Android Auto 按键、投屏界面操作或启动应用。点按“添加按键绑定”，按下按键，然后选择操作。点按某个绑定可更改或移除它。“重置”会移除所有绑定。</string>
++    <string name="keymap_screen_help">将本车机的按键绑定到操作：Android Auto 按键、投屏界面操作或启动应用。点按“添加按键绑定”，按下按键，然后选择操作。点按某个绑定可更改或移除它。“重置”会移除所有绑定。 “不执行任何操作”会让按键不传到 Android Auto，例如用于原车系统的方向盘按键。</string>
+     <string name="customization_screen_help">更改本应用主屏幕的外观：背景图片、四个按钮的颜色和大小，以及文字大小。夜间设置控制深色模式下的背景。这些都不会改变 Android Auto 在投屏中显示的内容。</string>
+     <string name="loading_screen_screen_help">设置 Android Auto 启动时显示的图片或短视频。可选择不超过 10 MB 的图片或视频，缩放以适应屏幕，并循环播放短动画。也可以隐藏启动文字。“移除”会恢复默认屏幕。</string>
+     <string name="auto_connect_priority">优先级 %d</string>
+@@ -447,6 +447,7 @@
+     <string name="key_assigned">\'%1$s\' 已分配给 \'%2$s\'</string>
+     <string name="action_picker_title">选择操作</string>
+     <string name="action_remove_binding">移除绑定</string>
++    <string name="action_do_nothing">不执行任何操作</string>
+     <string name="action_section_projection">投屏界面</string>
+     <string name="action_section_aa_keys">Android Auto 按键</string>
+     <string name="action_section_apps">应用</string>
+diff --git a/app/src/main/res/values-zh-rTW/strings.xml b/app/src/main/res/values-zh-rTW/strings.xml
+index 6e3db9f4..759d790d 100644
+--- a/app/src/main/res/values-zh-rTW/strings.xml
++++ b/app/src/main/res/values-zh-rTW/strings.xml
+@@ -341,7 +341,7 @@
+     <string name="auto_connect_help">這些方式會在開啟應用程式時自動執行。啟用您想要的方式，然後拖曳以設定順序。系統會使用第一個成功的已啟用方式。</string>
+     <string name="auto_connect_screen_help">設定應用程式開啟時如何自動連線。開啟需要的方式，並拖曳排列嘗試順序。系統會使用第一個成功的方式。延遲可讓速度較慢的車機有時間喚醒 Wi-Fi。這裡的設定不會影響你自行發起的連線。輕觸「儲存」即可套用變更。</string>
+     <string name="dpi_screen_help">設定 Android Auto 繪製時使用的像素密度。DPI 越高，圖示和文字越大，螢幕容納的內容越少。DPI 越低，圖示和文字越小，容納的內容越多。「自動」會使用本裝置的密度。新數值會在下次連線時生效。</string>
+-    <string name="keymap_screen_help">將本車機的按鍵綁定到動作：Android Auto 按鍵、投影畫面動作或啟動應用程式。輕觸「新增按鍵綁定」，按下按鍵，再選擇動作。輕觸綁定即可變更或移除。「重設」會移除所有綁定。</string>
++    <string name="keymap_screen_help">將本車機的按鍵綁定到動作：Android Auto 按鍵、投影畫面動作或啟動應用程式。輕觸「新增按鍵綁定」，按下按鍵，再選擇動作。輕觸綁定即可變更或移除。「重設」會移除所有綁定。 「不執行任何動作」會讓按鍵不傳送至 Android Auto，例如用於原廠系統的方向盤按鍵。</string>
+     <string name="customization_screen_help">變更本應用程式主畫面的外觀：背景圖片、四個按鈕的顏色和大小，以及文字大小。夜間設定會控制深色模式下的背景。這些都不會改變 Android Auto 在投影中顯示的內容。</string>
+     <string name="loading_screen_screen_help">設定 Android Auto 啟動時顯示的圖片或短片。可選擇不超過 10 MB 的圖片或影片，縮放以符合螢幕，並循環播放短動畫。也可以隱藏啟動文字。「移除」會還原預設畫面。</string>
+     <string name="auto_connect_priority">優先順序 %d</string>
+@@ -447,6 +447,7 @@
+     <string name="key_assigned">「%1$s」已指派給「%2$s」</string>
+     <string name="action_picker_title">選擇動作</string>
+     <string name="action_remove_binding">移除綁定</string>
++    <string name="action_do_nothing">不執行任何動作</string>
+     <string name="action_section_projection">投影畫面</string>
+     <string name="action_section_aa_keys">Android Auto 按鍵</string>
+     <string name="action_section_apps">應用程式</string>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 42ee47c4..ab0eb2c2 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -697,7 +697,7 @@
+     <string name="auto_connect_help">These methods run automatically when the app opens. Enable the ones you want, then drag to set the order. The first enabled method that succeeds will be used.</string>
+     <string name="auto_connect_screen_help">Sets how the app connects by itself when it opens. Turn on the methods you want and drag them into the order to try. The first that succeeds is used. The delay gives WiFi time to wake on a slow unit. Nothing here changes a connection you start yourself. Save applies the changes.</string>
+     <string name="dpi_screen_help">Sets the pixel density Android Auto draws at. A higher DPI makes icons and text larger, so less fits on screen. A lower DPI makes them smaller, so more fits. Automatic uses the density of this device. The new value applies the next time you connect.</string>
+-    <string name="keymap_screen_help">Binds the keys and buttons of this unit to actions: an Android Auto key, a projection screen action, or launching an app. Tap Add key binding, press the key, then choose the action. Tap a binding to change or remove it. Reset removes every binding.</string>
++    <string name="keymap_screen_help">Binds the keys and buttons of this unit to actions: an Android Auto key, a projection screen action, or launching an app. Tap Add key binding, press the key, then choose the action. Tap a binding to change or remove it. Reset removes every binding. Do nothing keeps a key from reaching Android Auto, for example a steering wheel key meant for the car\'s own system.</string>
+     <string name="customization_screen_help">Changes how the home screen of this app looks: the background image, the colors and size of the four buttons, and the text size. The night setting controls the background in dark mode. None of this changes what Android Auto shows on the projection.</string>
+     <string name="loading_screen_screen_help">Sets the picture or short video shown while Android Auto starts. Choose an image or a video up to 10 MB, scale it to fit the screen and loop short animations. You can also hide the starting text. Remove returns to the default screen.</string>
+     <string name="auto_connect_priority">Priority %d</string>
+@@ -1037,6 +1037,7 @@
+     <string name="key_assigned">\'%1$s\' assigned to \'%2$s\'</string>
+     <string name="action_picker_title">Choose action</string>
+     <string name="action_remove_binding">Remove binding</string>
++    <string name="action_do_nothing">Do nothing</string>
+     <string name="action_section_projection">Projection screen</string>
+     <string name="action_section_aa_keys">Android Auto keys</string>
+     <string name="action_section_apps">Apps</string>
+diff --git a/app/src/test/java/com/andrerinas/openheadunit/input/InputActionTest.kt b/app/src/test/java/com/andrerinas/openheadunit/input/InputActionTest.kt
+index 00b92864..017b3f4e 100644
+--- a/app/src/test/java/com/andrerinas/openheadunit/input/InputActionTest.kt
++++ b/app/src/test/java/com/andrerinas/openheadunit/input/InputActionTest.kt
+@@ -14,6 +14,7 @@ class InputActionTest {
+ 
+     @Test fun everyKindOfActionSurvivesEncoding() {
+         roundTrip(InputAction.None)
++        roundTrip(InputAction.Ignore)
+         roundTrip(InputAction.AaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+         roundTrip(InputAction.AaKey(KeyCode.KEY_NIGHT_MODE))
+         LocalAction.values().forEach { roundTrip(InputAction.Local(it)) }
+@@ -23,6 +24,7 @@ class InputActionTest {
+ 
+     @Test fun theStoredFormIsReadable() {
+         assertEquals("key:85", InputActionCodec.encode(InputAction.AaKey(85)))
++        assertEquals("ignore", InputActionCodec.encode(InputAction.Ignore))
+         assertEquals("local:dim", InputActionCodec.encode(InputAction.Local(LocalAction.DIM_SCREEN)))
+         assertEquals("app:com.example", InputActionCodec.encode(InputAction.LaunchApp(FavoriteTarget.App("com.example"))))
+     }
+@@ -58,6 +60,26 @@ class InputActionTest {
+         assertEquals(Resolution.Run(dim), KeyBindingPolicy.resolve(bindings, 132, false))
+     }
+ 
++    @Test fun aKeyBoundToDoNothingGoesNowhereEitherWay() {
++        // A steering wheel's OK meant for the car's own system, and any other key, media included.
++        val bindings = mapOf(
++            KeyEvent.KEYCODE_DPAD_CENTER to InputAction.Ignore,
++            KeyEvent.KEYCODE_MEDIA_NEXT to InputAction.Ignore,
++        )
++        for (key in bindings.keys) {
++            assertEquals(Resolution.Ignored, KeyBindingPolicy.resolve(bindings, key, true))
++            assertEquals(Resolution.Ignored, KeyBindingPolicy.resolve(bindings, key, false))
++        }
++        // and the keys next to it are left alone
++        assertEquals(Resolution.Unbound, KeyBindingPolicy.resolve(bindings, KeyEvent.KEYCODE_ENTER, true))
++    }
++
++    @Test fun doNothingIsNotDefault() {
++        // Default (None) sends the key as itself; Do nothing (Ignore) does not. They must never meet.
++        assertEquals(Resolution.Unbound, KeyBindingPolicy.resolve(mapOf(23 to InputAction.None), 23, true))
++        assertEquals(Resolution.Ignored, KeyBindingPolicy.resolve(mapOf(23 to InputAction.Ignore), 23, true))
++    }
++
+     @Test fun unboundKeysPassThrough() {
+         assertEquals(Resolution.Unbound, KeyBindingPolicy.resolve(emptyMap(), 66, true))
+         assertEquals(Resolution.Unbound, KeyBindingPolicy.resolve(mapOf(66 to InputAction.None), 66, false))
