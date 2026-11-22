@@ -139,7 +139,9 @@ class KeymapFragment : Fragment(), MainActivity.KeyListener {
                 tag = physicalKey.toString(),
                 title = physicalKeyName(physicalKey),
                 current = settings.keyBindings[physicalKey] ?: InputAction.None,
-                noneLabelResId = R.string.action_remove_binding
+                // "Default": the key goes on as itself, which is what removing the binding means.
+                noneLabelResId = R.string.action_default_binding,
+                offersDoNothing = true,
             )
         )
     }
